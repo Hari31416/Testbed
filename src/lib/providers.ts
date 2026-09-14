@@ -9,6 +9,25 @@ export function normalizeBaseURL(v: string) {
   return v.trim().replace(/\/+$/, "");
 }
 
+export function isInsecureRemoteHttp(url: string): boolean {
+  try {
+    const trimmed = url.trim();
+    if (!/^https?:\/\//i.test(trimmed)) return false;
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "http:") return false;
+    const h = parsed.hostname.toLowerCase();
+    const isLocal =
+      h === "localhost" ||
+      h === "127.0.0.1" ||
+      h === "::1" ||
+      h === "[::1]" ||
+      h.endsWith(".localhost");
+    return !isLocal;
+  } catch {
+    return false;
+  }
+}
+
 function withProxy(baseURL: string, proxyPrefix?: string) {
   if (!proxyPrefix) return baseURL;
   const p = proxyPrefix.trim();

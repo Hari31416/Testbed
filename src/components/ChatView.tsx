@@ -86,19 +86,70 @@ const SUGGESTIONS = [
   { icon: Sparkles, title: "Instruction following", prompt: "Reply with exactly three bullet points about why streaming matters for chat UX.", tag: "format" },
 ];
 
-function fileToDataURL(f: File): Promise<string> {
-  return new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(String(r.result));
-    r.onerror = rej;
-    r.readAsDataURL(f);
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
+
+async function processImageFile(file: File): Promise<{ url: string; mediaType: string; name: string }> {
+  if (file.size > MAX_IMAGE_BYTES) {
+    throw new Error(`"${file.name}" exceeds the 5 MB limit (${(file.size / (1024 * 1024)).toFixed(1)} MB).`);
+  }
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error(`Failed to read "${file.name}"`));
+    reader.onload = () => {
+      const dataUrl = String(reader.result);
+      const img = new Image();
+      img.onerror = () => resolve({ url: dataUrl, mediaType: file.type, name: file.name });
+      img.onload = () => {
+        const maxDim = 2048;
+        if (img.width <= maxDim && img.height <= maxDim) {
+          resolve({ url: dataUrl, mediaType: file.type, name: file.name });
+          return;
+        }
+        try {
+          let w = img.width;
+          let h = img.height;
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            resolve({ url: dataUrl, mediaType: file.type, name: file.name });
+            return;
+          }
+          ctx.drawImage(img, 0, 0, w, h);
+          const mime = file.type === "image/png" ? "image/png" : "image/jpeg";
+          const resized = canvas.toDataURL(mime, 0.85);
+          resolve({ url: resized, mediaType: mime, name: file.name });
+        } catch {
+          resolve({ url: dataUrl, mediaType: file.type, name: file.name });
+        }
+      };
+      img.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
   });
 }
 
 function Markdown({ text }: { text: string }) {
   return (
     <div className="md">
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+        components={{
+          a: ({ node: _n, ...props }) => (
+            <a {...props} target="_blank" rel="noopener noreferrer" />
+          ),
+        }}
+      >
         {preprocessMath(text)}
       </ReactMarkdown>
     </div>
@@ -181,6 +232,7 @@ export function ChatView({
   const [stripReasoning, setStripReasoning] = useState(initialSettings.stripReasoning);
   const [tuning, setTuning] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -358,10 +410,16 @@ export function ChatView({
 
   const onFiles = async (files: FileList | null) => {
     if (!files) return;
+    setFileError(null);
     const next: { url: string; mediaType: string; name: string }[] = [];
     for (const f of Array.from(files).slice(0, 4)) {
       if (!f.type.startsWith("image/")) continue;
-      next.push({ url: await fileToDataURL(f), mediaType: f.type, name: f.name });
+      try {
+        const item = await processImageFile(f);
+        next.push(item);
+      } catch (e) {
+        setFileError(e instanceof Error ? e.message : String(e));
+      }
     }
     setImages((p) => [...p, ...next].slice(0, 4));
   };
@@ -678,6 +736,18 @@ export function ChatView({
       {/* composer */}
       <footer className="border-t border-ink-200/70 bg-paper/90 backdrop-blur">
         <div className="mx-auto max-w-3xl px-4 py-3">
+          {fileError && (
+            <div className="mb-2 flex items-center justify-between rounded-xl border border-red-500/25 bg-red-50/90 px-3 py-1.5 text-xs text-red-900">
+              <span>{fileError}</span>
+              <button
+                onClick={() => setFileError(null)}
+                className="ml-2 cursor-pointer font-mono text-xs opacity-70 hover:opacity-100"
+                aria-label="Dismiss error"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          )}
           {images.length > 0 && (
             <div className="mb-2 flex gap-2">
               {images.map((img) => (

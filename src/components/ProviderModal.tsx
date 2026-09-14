@@ -1,7 +1,7 @@
-import { Check, Eye, EyeOff, FlaskConical, Loader2, PlugZap, Plus, Trash2, X } from "lucide-react";
+import { AlertTriangle, Check, Eye, EyeOff, FlaskConical, Loader2, PlugZap, Plus, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { db, uid, type Provider } from "../lib/db";
-import { fetchModels, normalizeBaseURL, PRESETS, type ConnectionStatus } from "../lib/providers";
+import { fetchModels, isInsecureRemoteHttp, normalizeBaseURL, PRESETS, type ConnectionStatus } from "../lib/providers";
 import { cn } from "../lib/utils";
 import { Btn, Field, StatusDot } from "./ui";
 
@@ -131,6 +131,14 @@ export function ProviderModal({
             </div>
             <Field placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} aria-label="Provider name" />
             <Field placeholder="Base URL — https://…/v1" value={baseURL} onChange={(e) => setBaseURL(e.target.value)} spellCheck={false} className="font-mono text-xs" aria-label="Base URL" />
+            {isInsecureRemoteHttp(baseURL) && (
+              <div className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-900">
+                <AlertTriangle size={13} className="mt-0.5 shrink-0 text-amber-700" />
+                <span>
+                  <b>Security risk:</b> Remote HTTP transmits API keys and messages unencrypted. Use HTTPS for remote gateways.
+                </span>
+              </div>
+            )}
             <div className="relative">
               <Field
                 placeholder="API key"
@@ -146,6 +154,14 @@ export function ProviderModal({
               </button>
             </div>
             <Field placeholder="Proxy prefix — CORS fallback, optional" value={proxyPrefix} onChange={(e) => setProxyPrefix(e.target.value)} spellCheck={false} className="font-mono text-xs" aria-label="Proxy prefix" />
+            {proxyPrefix.trim() !== "" && (
+              <div className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-900">
+                <AlertTriangle size={13} className="mt-0.5 shrink-0 text-amber-700" />
+                <span>
+                  <b>Proxy warning:</b> All requests (including your API key and prompts) pass through this proxy. Only use a proxy you control and trust.
+                </span>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <Btn size="sm" variant="primary" onClick={test} disabled={busy || !baseURL.trim()}>
                 {busy ? <Loader2 size={13} className="animate-spin" /> : <FlaskConical size={13} />}

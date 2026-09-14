@@ -65,7 +65,7 @@ export function ProviderModal({
           </span>
           <div className="flex-1">
             <h2 className="font-display text-xl font-semibold tracking-tight">Providers</h2>
-            <p className="font-mono text-[11px] text-ink-500">BYOK · keys stay in IndexedDB · direct browser calls</p>
+            <p className="font-mono text-[11px] text-ink-500">Direct browser calls · Keys stay in IndexedDB</p>
           </div>
           <button onClick={onClose} className="grid h-8 w-8 cursor-pointer place-items-center rounded-lg text-ink-500 hover:bg-ink-950/5 hover:text-ink-950" aria-label="Close">
             <X size={16} />

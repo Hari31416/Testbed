@@ -2,17 +2,72 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#16130f" />
-    <meta name="description" content="BYOK Model Testbed — client-only playground for testing OpenAI-compatible models. Streaming, tools, vision." />
     <title>Testbed — BYOK Model Playground</title>
+    <meta name="description"
+      content="High-performance, client-only playground for testing and probing OpenAI-compatible LLMs. Bring your own API key, test streaming, multi-tool calling, reasoning models, and vision with 100% browser-local privacy." />
+    <meta name="keywords"
+      content="BYOK, LLM playground, AI testbed, OpenAI compatible, Ollama, Groq, OpenRouter, tool calling, function calling, prompt engineering, streaming chat, local AI, vision models" />
+    <meta name="author" content="Testbed" />
+    <meta name="robots" content="index, follow" />
+    <meta name="theme-color" content="#16130f" />
+<!-- Favicons & App Icons -->
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+<link rel="manifest" href="/site.webmanifest" />
+
+<!-- Open Graph / Facebook -->
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Testbed" />
+<meta property="og:title" content="Testbed — BYOK Model Playground" />
+<meta property="og:description"
+  content="High-performance, client-only playground for testing and probing OpenAI-compatible LLMs with streaming, multi-tool reasoning, and vision." />
+<meta property="og:image" content="/og-image.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="Testbed — BYOK Model Playground" />
+
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Testbed — BYOK Model Playground" />
+<meta name="twitter:description"
+  content="High-performance, client-only playground for testing and probing OpenAI-compatible LLMs with streaming, multi-tool reasoning, and vision." />
+<meta name="twitter:image" content="/og-image.png" />
+<meta name="twitter:image:alt" content="Testbed — BYOK Model Playground" />
+
+<!-- Typography -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
+<!-- Structured Data (JSON-LD) -->
+<script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Testbed",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "All",
+        "description": "High-performance, client-only playground for testing and probing OpenAI-compatible LLMs with streaming, multi-tool reasoning, and vision.",
+        "browserRequirements": "Requires JavaScript. Requires HTML5.",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "featureList": [
+          "Client-only zero-server storage",
+          "OpenAI-compatible streaming",
+          "Multi-tool function calling test suite",
+          "Vision image inspection",
+          "Reasoning trace analysis",
+          "IndexedDB persistent chat history"
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

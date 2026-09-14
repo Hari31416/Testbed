@@ -10,6 +10,7 @@ import {
   OctagonX,
   PenLine,
   PlugZap,
+  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   Wrench,
@@ -510,6 +511,12 @@ export function ChatView({
                 <p className="mx-auto mt-2 max-w-md font-mono text-xs leading-relaxed text-ink-500">
                   {!provider ? "Add a provider above to begin." : (model ?? "Pick a model above to begin.")}
                 </p>
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-ink-200 bg-white/80 px-3 py-1 font-mono text-[11px] text-ink-600 shadow-xs">
+                    <ShieldCheck size={13} className="text-signal-600" />
+                    <span>No server required · 100% client-side</span>
+                  </span>
+                </div>
               </div>
               {ready && (
                 <>

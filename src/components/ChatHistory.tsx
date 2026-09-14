@@ -1,4 +1,4 @@
-import { FlaskConical, MessageSquareText, PanelLeftClose, PenLine, Trash2 } from "lucide-react";
+import { FlaskConical, MessageSquareText, PanelLeftClose, PenLine, ShieldCheck, Trash2 } from "lucide-react";
 import type { Chat, Provider } from "../lib/db";
 import { cn } from "../lib/utils";
 import { Plaque } from "./ui";
@@ -93,6 +93,16 @@ export function ChatHistory({
             Hit New chat to start probing.
           </p>
         )}
+      </div>
+
+      <div className="border-t border-white/10 pt-3">
+        <div className="flex items-center gap-1.5 font-mono text-[10px] tracking-wider text-signal-500 uppercase">
+          <ShieldCheck size={12} />
+          <span>No Server Required</span>
+        </div>
+        <p className="mt-1 text-[11px] leading-relaxed text-ink-400">
+          Client-only runtime. Keys and data stay in your browser.
+        </p>
       </div>
     </div>
   );

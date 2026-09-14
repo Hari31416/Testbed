@@ -1,5 +1,40 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { wrapLanguageModel, type LanguageModelMiddleware } from "ai";
+import type { Provider } from "./db";
+
+const SESSION_KEY_PREFIX = "testbed_session_key:";
+
+export function getSessionKey(providerId: string): string | null {
+  try {
+    return sessionStorage.getItem(`${SESSION_KEY_PREFIX}${providerId}`);
+  } catch {
+    return null;
+  }
+}
+
+export function setSessionKey(providerId: string, apiKey: string): void {
+  try {
+    sessionStorage.setItem(`${SESSION_KEY_PREFIX}${providerId}`, apiKey);
+  } catch {
+    /* sessionStorage unavailable or restricted */
+  }
+}
+
+export function removeSessionKey(providerId: string): void {
+  try {
+    sessionStorage.removeItem(`${SESSION_KEY_PREFIX}${providerId}`);
+  } catch {
+    /* sessionStorage unavailable */
+  }
+}
+
+export function resolveProviderKey(provider: Provider): string {
+  const sessionKey = getSessionKey(provider.id);
+  if (sessionKey !== null && sessionKey.trim() !== "") {
+    return sessionKey;
+  }
+  return provider.apiKey || "";
+}
 
 export type ConnectionStatus =
   | { ok: true; models: string[] }

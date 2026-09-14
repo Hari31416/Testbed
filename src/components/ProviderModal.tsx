@@ -1,7 +1,17 @@
-import { AlertTriangle, Check, Eye, EyeOff, FlaskConical, Loader2, PlugZap, Plus, Trash2, X } from "lucide-react";
+import { AlertTriangle, Check, Eye, EyeOff, FlaskConical, KeyRound, Loader2, PlugZap, Plus, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { db, uid, type Provider } from "../lib/db";
-import { fetchModels, isInsecureRemoteHttp, normalizeBaseURL, PRESETS, type ConnectionStatus } from "../lib/providers";
+import {
+  fetchModels,
+  getSessionKey,
+  isInsecureRemoteHttp,
+  normalizeBaseURL,
+  PRESETS,
+  removeSessionKey,
+  resolveProviderKey,
+  setSessionKey,
+  type ConnectionStatus,
+} from "../lib/providers";
 import { cn } from "../lib/utils";
 import { Btn, Field, StatusDot } from "./ui";
 
@@ -22,6 +32,9 @@ export function ProviderModal({
   const [baseURL, setBaseURL] = useState("https://openrouter.ai/api/v1");
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
+  const [rememberKey, setRememberKey] = useState(false);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [sessionInput, setSessionInput] = useState("");
   const [proxyPrefix, setProxyPrefix] = useState("");
   const [showForm, setShowForm] = useState(providers.length === 0);
   const [status, setStatus] = useState<ConnectionStatus | null>(null);
@@ -35,23 +48,30 @@ export function ProviderModal({
   };
 
   const save = async () => {
+    const id = uid();
+    const trimmedKey = apiKey.trim();
     const p: Provider = {
-      id: uid(),
+      id,
       name: name.trim() || normalizeBaseURL(baseURL),
       baseURL: normalizeBaseURL(baseURL),
-      apiKey,
+      apiKey: rememberKey ? trimmedKey : "",
       proxyPrefix: proxyPrefix.trim() || undefined,
       createdAt: Date.now(),
     };
     await db.providers.put(p);
+    if (!rememberKey && trimmedKey) {
+      setSessionKey(id, trimmedKey);
+    }
     onSelect(p.id);
     onChanged();
     setShowForm(false);
+    setApiKey("");
   };
 
   const remove = async (id: string) => {
     await db.providers.delete(id);
     await db.models.where("providerId").equals(id).delete();
+    removeSessionKey(id);
     onChanged();
   };
 
@@ -65,7 +85,7 @@ export function ProviderModal({
           </span>
           <div className="flex-1">
             <h2 className="font-display text-xl font-semibold tracking-tight">Providers</h2>
-            <p className="font-mono text-[11px] text-ink-500">Direct browser calls · Keys stay in IndexedDB</p>
+            <p className="font-mono text-[11px] text-ink-500">Direct browser calls · Session memory by default</p>
           </div>
           <button onClick={onClose} className="grid h-8 w-8 cursor-pointer place-items-center rounded-lg text-ink-500 hover:bg-ink-950/5 hover:text-ink-950" aria-label="Close">
             <X size={16} />
@@ -75,6 +95,10 @@ export function ProviderModal({
         <div className="mt-4 space-y-2">
           {providers.map((p) => {
             const active = p.id === activeId;
+            const effectiveKey = resolveProviderKey(p);
+            const isPersisted = Boolean(p.isPersisted);
+            const hasSession = Boolean(getSessionKey(p.id));
+            const isLocal = p.baseURL.includes("localhost") || p.baseURL.includes("127.0.0.1");
             return (
               <div
                 key={p.id}
@@ -83,30 +107,90 @@ export function ProviderModal({
                   onClose();
                 }}
                 className={cn(
-                  "group flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition",
+                  "group flex cursor-pointer flex-col gap-2 rounded-xl border p-3 text-left transition",
                   active ? "border-signal-600/60 bg-signal-50" : "border-ink-200 bg-white/80 hover:border-ink-400",
                 )}
               >
-                <span className={cn("grid h-8 w-8 shrink-0 place-items-center rounded-lg", active ? "bg-signal-600 text-white" : "bg-ink-950 text-[#f5f1e8]")}>
-                  <PlugZap size={15} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-1.5 text-sm font-semibold">
-                    {p.name}
-                    {active && <Check size={14} className="text-signal-600" />}
+                <div className="flex items-center gap-3">
+                  <span className={cn("grid h-8 w-8 shrink-0 place-items-center rounded-lg", active ? "bg-signal-600 text-white" : "bg-ink-950 text-[#f5f1e8]")}>
+                    <PlugZap size={15} />
                   </span>
-                  <span className="block truncate font-mono text-[11px] text-ink-500">{p.baseURL}</span>
-                </span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    remove(p.id);
-                  }}
-                  className="cursor-pointer rounded-lg p-1.5 text-ink-400 opacity-0 transition group-hover:opacity-100 hover:bg-red-50 hover:text-red-600"
-                  aria-label={`Delete ${p.name}`}
-                >
-                  <Trash2 size={15} />
-                </button>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-1.5 text-sm font-semibold">
+                      {p.name}
+                      {active && <Check size={14} className="text-signal-600" />}
+                      {isPersisted ? (
+                        <span className="rounded bg-ink-100 px-1.5 py-0.5 font-mono text-[10px] font-medium text-ink-600">
+                          saved on device
+                        </span>
+                      ) : hasSession ? (
+                        <span className="rounded bg-signal-100 px-1.5 py-0.5 font-mono text-[10px] font-medium text-signal-700">
+                          session only
+                        </span>
+                      ) : !effectiveKey && !isLocal ? (
+                        <span className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[10px] font-medium text-amber-800">
+                          no key
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="block truncate font-mono text-[11px] text-ink-500">{p.baseURL}</span>
+                  </span>
+                  {!effectiveKey && !isLocal && editingSessionId !== p.id && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingSessionId(p.id);
+                        setSessionInput("");
+                      }}
+                      className="flex cursor-pointer items-center gap-1 rounded-lg border border-signal-600/40 bg-white px-2 py-1 font-mono text-[11px] text-signal-700 transition hover:bg-signal-50"
+                      title="Provide API key for current session"
+                    >
+                      <KeyRound size={11} /> set key
+                    </button>
+                  )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      remove(p.id);
+                    }}
+                    className="cursor-pointer rounded-lg p-1.5 text-ink-400 opacity-0 transition group-hover:opacity-100 hover:bg-red-50 hover:text-red-600"
+                    aria-label={`Delete ${p.name}`}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+                {editingSessionId === p.id && (
+                  <div className="flex items-center gap-1.5 pt-1" onClick={(e) => e.stopPropagation()}>
+                    <Field
+                      type="password"
+                      placeholder="Paste session API key"
+                      value={sessionInput}
+                      onChange={(e) => setSessionInput(e.target.value)}
+                      className="py-1 font-mono text-xs"
+                      autoFocus
+                    />
+                    <Btn
+                      size="sm"
+                      variant="primary"
+                      onClick={() => {
+                        if (sessionInput.trim()) {
+                          setSessionKey(p.id, sessionInput.trim());
+                          setEditingSessionId(null);
+                          setSessionInput("");
+                          onChanged();
+                        }
+                      }}
+                    >
+                      Save
+                    </Btn>
+                    <button
+                      onClick={() => setEditingSessionId(null)}
+                      className="cursor-pointer px-1.5 text-xs text-ink-500 hover:text-ink-950"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -152,6 +236,22 @@ export function ProviderModal({
               <button onClick={() => setShowKey((s) => !s)} className="absolute top-1/2 right-2 -translate-y-1/2 cursor-pointer text-ink-400 hover:text-ink-950" aria-label={showKey ? "Hide key" : "Show key"}>
                 {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
               </button>
+            </div>
+            <div className="space-y-1 rounded-lg border border-ink-200/60 bg-white/50 p-2.5">
+              <label className="flex cursor-pointer items-center gap-2 font-mono text-xs text-ink-700">
+                <input
+                  type="checkbox"
+                  checked={rememberKey}
+                  onChange={(e) => setRememberKey(e.target.checked)}
+                  className="accent-signal-600"
+                />
+                <span>Persist key in browser storage (IndexedDB)</span>
+              </label>
+              <p className="font-mono text-[10px] text-ink-500">
+                {rememberKey
+                  ? "Key will be saved unencrypted in browser storage across restarts."
+                  : "Session only (default): Key lives in temporary memory and is purged on tab close."}
+              </p>
             </div>
             <Field placeholder="Proxy prefix — CORS fallback, optional" value={proxyPrefix} onChange={(e) => setProxyPrefix(e.target.value)} spellCheck={false} className="font-mono text-xs" aria-label="Proxy prefix" />
             {proxyPrefix.trim() !== "" && (

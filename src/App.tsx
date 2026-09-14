@@ -5,6 +5,7 @@ import { ChatView, type ChatSettings, type PersistSnapshot } from "./components/
 import { ProviderModal } from "./components/ProviderModal";
 import { createChat, deleteChat, listChats, loadMessages, replaceMessages, updateChat, type PersistedMessage } from "./lib/chats";
 import { db, type Chat, type Provider } from "./lib/db";
+import { resolveProviderKey } from "./lib/providers";
 import { cn } from "./lib/utils";
 
 const DEFAULT_SYSTEM = "You are a helpful assistant. Use tools when asked.";
@@ -47,8 +48,13 @@ export default function App() {
 
   const refreshProviders = useCallback(async () => {
     const all = await db.providers.toArray();
-    setProviders(all);
-    return all;
+    const withKeys = all.map((p) => ({
+      ...p,
+      isPersisted: Boolean(p.apiKey && p.apiKey.trim()),
+      apiKey: resolveProviderKey(p),
+    }));
+    setProviders(withKeys);
+    return withKeys;
   }, []);
 
   const refreshChats = useCallback(async () => {

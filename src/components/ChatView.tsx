@@ -6,6 +6,7 @@ import {
   Copy,
   FlaskConical,
   ImagePlus,
+  KeyRound,
   Loader2,
   OctagonX,
   PenLine,
@@ -505,6 +506,13 @@ export function ChatView({
     }
   };
 
+  const needsKey = Boolean(
+    provider &&
+    !provider.apiKey &&
+    !provider.baseURL.includes("localhost") &&
+    !provider.baseURL.includes("127.0.0.1")
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* header: provider + model live in the composer zone now */}
@@ -520,6 +528,16 @@ export function ChatView({
             </span>
             <span className="truncate">{provider?.name ?? "Add provider"}</span>
           </button>
+          {needsKey && (
+            <button
+              onClick={onOpenProviders}
+              className="flex cursor-pointer items-center gap-1 rounded-full border border-amber-500/40 bg-amber-50 px-2 py-1 font-mono text-[10px] font-medium text-amber-800 transition hover:bg-amber-100"
+              title="No API key set for this session — click to provide"
+            >
+              <KeyRound size={11} className="text-amber-600" />
+              <span>Set key</span>
+            </button>
+          )}
           <ModelSelect provider={provider} value={model} onPick={onModelChange} />
           <span className="ml-auto flex items-center gap-2">
             {busy && (
@@ -1065,7 +1083,15 @@ export function ChatView({
                   send();
                 }
               }}
-              placeholder={!provider ? "Add a provider to start…" : !model ? "Pick a model above to start…" : `Message ${model}…`}
+              placeholder={
+                !provider
+                  ? "Add a provider to start…"
+                  : !model
+                    ? "Pick a model above to start…"
+                    : needsKey
+                      ? `Enter session API key for ${provider.name} (click 'Set key' above)…`
+                      : `Message ${model}…`
+              }
               className="max-h-40 w-full resize-none bg-transparent px-4 pt-3 pb-1 text-sm outline-none placeholder:text-ink-400 disabled:cursor-not-allowed"
             />
             <div className="flex items-center gap-1 px-2.5 pb-2.5">

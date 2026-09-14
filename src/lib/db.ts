@@ -7,6 +7,7 @@ export interface Provider {
   apiKey: string;
   proxyPrefix?: string; // optional CORS proxy prefix
   createdAt: number;
+  isPersisted?: boolean;
 }
 
 export interface ProviderModel {

@@ -3,6 +3,19 @@ import { db, uid, type Chat } from "./db";
 
 export type PersistedMessage = Pick<UIMessage, "id" | "role" | "parts"> & Partial<UIMessage>;
 
+/** Per-message lab metrics, stored in the row's `usage` column. */
+export interface MessageMetrics {
+  at?: number;
+  ttftMs?: number;
+  totalMs?: number;
+  estTokens?: number;
+  tpsEst?: number;
+}
+
+export function metricsOf(m: PersistedMessage): MessageMetrics {
+  return ((m.metadata as Record<string, unknown> | undefined)?.testbed ?? {}) as MessageMetrics;
+}
+
 export async function listChats(): Promise<Chat[]> {
   return db.chats.orderBy("updatedAt").reverse().toArray();
 }
@@ -51,6 +64,7 @@ export async function replaceMessages(chatId: string, messages: PersistedMessage
           chatId,
           role: m.role as "user" | "assistant" | "system",
           parts: (m.parts ?? []) as unknown[],
+          usage: Object.keys(metricsOf(m)).length ? metricsOf(m) : undefined,
           createdAt: now + i,
         })),
       );
@@ -80,7 +94,16 @@ function sameThread(
 
 export async function loadMessages(chatId: string): Promise<PersistedMessage[]> {
   const rows = await db.messages.where("chatId").equals(chatId).sortBy("createdAt");
-  return rows.map((r) => ({ id: r.id, role: r.role, parts: (r.parts ?? []) as UIMessage["parts"] }));
+  return rows.map((r) => {
+    const saved = (r.usage ?? {}) as MessageMetrics;
+    const testbed: MessageMetrics = { ...saved, at: saved.at ?? r.createdAt };
+    return {
+      id: r.id,
+      role: r.role,
+      parts: (r.parts ?? []) as UIMessage["parts"],
+      metadata: { testbed },
+    };
+  });
 }
 
 function firstUserText(messages: PersistedMessage[]): string {

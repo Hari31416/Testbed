@@ -25,8 +25,9 @@ export interface Chat {
   title: string;
   systemPrompt?: string;
   temperature?: number;
+  topP?: number;
   stripReasoning?: boolean;
-  maxTokens?: number;
+  maxTokens?: number | null;
   createdAt: number;
   updatedAt: number;
 }

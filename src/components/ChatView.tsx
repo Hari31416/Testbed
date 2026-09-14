@@ -8,8 +8,8 @@ import {
   ImagePlus,
   Loader2,
   OctagonX,
+  PenLine,
   PlugZap,
-  RotateCcw,
   SlidersHorizontal,
   Sparkles,
   Wrench,
@@ -22,6 +22,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import "katex/dist/katex.min.css";
 import type { PersistedMessage } from "../lib/chats";
+import { metricsOf, type MessageMetrics } from "../lib/chats";
 import type { Provider } from "../lib/db";
 import { describeError } from "../lib/errors";
 import { preprocessMath } from "../lib/math";
@@ -34,6 +35,8 @@ import { Plaque, StatusDot } from "./ui";
 export interface ChatSettings {
   system: string;
   temperature: number;
+  topP: number;
+  maxTokens: number | null;
   stripReasoning: boolean;
 }
 
@@ -41,6 +44,36 @@ export interface PersistSnapshot extends ChatSettings {
   messages: PersistedMessage[];
   providerId: string | null;
   modelId: string | null;
+}
+
+function fmtClock(at?: number): string {
+  if (!at) return "";
+  return new Date(at).toLocaleTimeString([], { hour12: false });
+}
+
+function fmtSecs(ms?: number): string {
+  if (ms == null || !Number.isFinite(ms)) return "";
+  const s = ms / 1000;
+  return `${s < 10 ? s.toFixed(2) : s.toFixed(1)}s`;
+}
+
+/** Rough output-token estimate (~4 chars/token) for live tok/s. */
+function estTokens(parts: Part[]): number {
+  let chars = 0;
+  for (const p of parts) {
+    if ((p.type === "text" || p.type === "reasoning") && typeof (p as { text?: unknown }).text === "string") {
+      chars += ((p as { text: string }).text ?? "").length;
+    }
+  }
+  return Math.max(1, Math.round(chars / 4));
+}
+
+function hasContent(m: Msg): boolean {
+  return m.parts.some((p) => {
+    const t = String(p.type ?? "");
+    if (t === "text" || t === "reasoning") return String((p as { text?: string }).text ?? "").length > 0;
+    return t.startsWith("tool-") || t.startsWith("dynamic-tool") || t === "file";
+  });
 }
 
 type Part = Record<string, unknown> & { type?: string };
@@ -121,6 +154,7 @@ export function ChatView({
   initialSettings,
   onOpenProviders,
   onModelChange,
+  onNewChat,
   onPersist,
 }: {
   viewKey: string;
@@ -131,12 +165,15 @@ export function ChatView({
   initialSettings: ChatSettings;
   onOpenProviders: () => void;
   onModelChange: (m: string) => void;
+    onNewChat: () => void;
   onPersist: (viewKey: string, snap: PersistSnapshot) => void;
 }) {
   const [input, setInput] = useState("");
   const [images, setImages] = useState<{ url: string; mediaType: string; name: string }[]>([]);
   const [system, setSystem] = useState(initialSettings.system);
   const [temperature, setTemperature] = useState(initialSettings.temperature);
+  const [topP, setTopP] = useState(initialSettings.topP);
+  const [maxTokens, setMaxTokens] = useState<number | null>(initialSettings.maxTokens);
   const [stripReasoning, setStripReasoning] = useState(initialSettings.stripReasoning);
   const [tuning, setTuning] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
@@ -144,12 +181,45 @@ export function ChatView({
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // Per-message lab metrics (timestamps, TTFT, tok/s). Seeded from history,
+  // merged into message metadata on persist.
+  const metaRef = useRef(new Map<string, MessageMetrics>());
+  const [, setMetaTick] = useState(0);
+  const bumpMeta = useCallback(() => setMetaTick((t) => t + 1), []);
+  const setMeta = useCallback(
+    (id: string, patch: MessageMetrics) => {
+      metaRef.current.set(id, { ...metaRef.current.get(id), ...patch });
+      bumpMeta();
+    },
+    [bumpMeta],
+  );
+  const metaFor = useCallback(
+    (m: { id: string; metadata?: unknown }): MessageMetrics => ({
+      ...metricsOf({ metadata: m.metadata } as PersistedMessage),
+      ...metaRef.current.get(m.id),
+    }),
+    [],
+  );
+  useEffect(() => {
+    for (const m of initialMessages) {
+      const saved = metricsOf(m);
+      if (Object.keys(saved).length) metaRef.current.set(m.id, saved);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Active turn timing refs.
+  const turnRef = useRef({ active: false, wall: 0, perf: 0, firstTokenAt: 0 });
+  const [, setTick] = useState(0);
+
   const transport = useMemo(() => {
     if (!provider || !model) return null;
     const agent = new ToolLoopAgent({
       model: clientModel(provider.baseURL, provider.apiKey, model, provider.proxyPrefix, { stripReasoning }),
       instructions: system,
       temperature,
+      topP,
+      maxOutputTokens: maxTokens ?? undefined,
       tools: testTools,
     } as never);
     // No server here — everything runs in-browser, so surface the real
@@ -161,9 +231,9 @@ export function ChatView({
         return describeError(e);
       },
     } as never);
-  }, [provider, model, system, temperature, stripReasoning]);
+  }, [provider, model, system, temperature, topP, maxTokens, stripReasoning]);
 
-  const { messages, sendMessage, status, error, stop, regenerate } = useChat({
+  const { messages, sendMessage, status, error, stop } = useChat({
     messages: initialMessages,
     transport,
   } as never) as unknown as {
@@ -172,7 +242,6 @@ export function ChatView({
     status: string;
     error: Error | undefined;
     stop: () => void;
-    regenerate: () => void;
   };
 
   const busy = status === "streaming" || status === "submitted";
@@ -189,17 +258,23 @@ export function ChatView({
   providerIdRef.current = provider?.id ?? null;
   const latestRef = useRef<Msg[]>(messages);
   latestRef.current = messages;
-  const settingsRef = useRef({ system, temperature, stripReasoning });
-  settingsRef.current = { system, temperature, stripReasoning };
+  const settingsRef = useRef({ system, temperature, topP, maxTokens, stripReasoning });
+  settingsRef.current = { system, temperature, topP, maxTokens, stripReasoning };
   const onPersistRef = useRef(onPersist);
   onPersistRef.current = onPersist;
   const persistNow = useCallback(() => {
     const s = settingsRef.current;
     const m = mountRef.current;
     onPersistRef.current(m.viewKey, {
-      messages: latestRef.current as unknown as PersistedMessage[],
+      messages: latestRef.current.map((msg) => {
+        const meta = metaRef.current.get(msg.id);
+        if (!meta || !Object.keys(meta).length) return msg as unknown as PersistedMessage;
+        return { ...msg, metadata: { ...((msg as { metadata?: object }).metadata ?? {}), testbed: meta } } as unknown as PersistedMessage;
+      }),
       system: s.system,
       temperature: s.temperature,
+      topP: s.topP,
+      maxTokens: s.maxTokens,
       stripReasoning: s.stripReasoning,
       providerId: providerIdRef.current,
       // Model may change after mount (header switcher) — track live.
@@ -207,14 +282,63 @@ export function ChatView({
     });
   }, []);
   const prevStatusRef = useRef(status);
+
+  // Turn metrics engine: timestamps, TTFT, tok/s, total. Runs before the
+  // persist below so settled numbers are stored in the same write.
   useEffect(() => {
     const prev = prevStatusRef.current;
     prevStatusRef.current = status;
+    const settling = (status === "ready" || status === "error") && (prev === "streaming" || prev === "submitted");
+
+    // A fresh turn may begin without send() (regenerate): pick it up.
+    if (!turnRef.current.active && (status === "submitted" || status === "streaming")) {
+      const last = messages[messages.length - 1];
+      if (last && last.role === "user") {
+        turnRef.current = { active: true, wall: Date.now(), perf: performance.now(), firstTokenAt: 0 };
+      }
+    }
+    const t = turnRef.current;
+    if (t.active) {
+      const last = messages[messages.length - 1];
+      if (last && last.role === "user" && !metaRef.current.get(last.id)?.at) {
+        setMeta(last.id, { at: t.wall });
+      }
+      const asst = [...messages].reverse().find((m) => m.role === "assistant");
+      if (asst && !t.firstTokenAt && hasContent(asst)) {
+        t.firstTokenAt = performance.now();
+        setMeta(asst.id, { at: Date.now(), ttftMs: t.firstTokenAt - t.perf });
+      }
+      if (settling && asst) {
+        const now = performance.now();
+        const totalMs = now - t.perf;
+        const ttftMs = t.firstTokenAt ? t.firstTokenAt - t.perf : totalMs;
+        const est = estTokens(asst.parts);
+        const decodeMs = Math.max(1, totalMs - ttftMs);
+        setMeta(asst.id, {
+          at: metaRef.current.get(asst.id)?.at ?? Date.now(),
+          ttftMs,
+          totalMs,
+          estTokens: est,
+          tpsEst: Math.round((est / (decodeMs / 1000)) * 10) / 10,
+        });
+        t.active = false;
+      } else if (settling) {
+        t.active = false;
+      }
+    }
     // Only persist on a real settle (busy -> idle), not on mount.
-    if ((status === "ready" || status === "error") && (prev === "streaming" || prev === "submitted")) persistNow();
+    if (settling) persistNow();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
+  }, [messages, status]);
   useEffect(() => () => persistNow(), [persistNow]);
+
+  // Live elapsed ticker while a response is in flight.
+  useEffect(() => {
+    if (!busy) return;
+    const id = setInterval(() => setTick((x) => x + 1), 150);
+    return () => clearInterval(id);
+  }, [busy]);
+  const elapsedSecs = busy && turnRef.current.wall ? (Date.now() - turnRef.current.wall) / 1000 : 0;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -240,6 +364,7 @@ export function ChatView({
   const send = async (text?: string) => {
     const body = (text ?? input).trim();
     if ((!body && images.length === 0) || busy || !ready) return;
+    turnRef.current = { active: true, wall: Date.now(), perf: performance.now(), firstTokenAt: 0 };
     const parts: unknown[] = [
       ...images.map((img) => ({ type: "file", mediaType: img.mediaType, url: img.url, filename: img.name })),
       ...(body ? [{ type: "text", text: body }] : []),
@@ -291,12 +416,12 @@ export function ChatView({
             >
               <SlidersHorizontal size={13} /> Tune
             </button>
-            {!busy && messages.length > 0 && (
+            {!busy && (
               <button
-                onClick={() => regenerate()}
+                onClick={onNewChat}
                 className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-ink-200 bg-white/70 px-2.5 py-1.5 text-xs font-medium text-ink-700 transition hover:border-ink-400"
               >
-                <RotateCcw size={13} /> Retry
+                <PenLine size={13} /> New chat
               </button>
             )}
             {busy && (
@@ -310,33 +435,60 @@ export function ChatView({
           </span>
         </div>
         {tuning && (
-          <div className="mx-auto grid max-w-3xl gap-2 px-4 pb-3 sm:grid-cols-[1fr_140px_auto]">
-            <input
-              value={system}
-              onChange={(e) => {
-                setSystem(e.target.value);
-                localStorage.setItem("tune.system", e.target.value);
-              }}
-              placeholder="System prompt…"
-              className="rounded-lg border border-ink-200 bg-white/80 px-2.5 py-1.5 text-xs outline-none focus:border-signal-600 focus:ring-2 focus:ring-signal-600/15"
-            />
-            <label className="flex items-center gap-2 rounded-lg border border-ink-200 bg-white/80 px-2.5 py-1.5 text-xs">
-              <span className="font-mono text-ink-500">temp</span>
-              <input type="range" min={0} max={2} step={0.1} value={temperature} onChange={(e) => { setTemperature(Number(e.target.value)); localStorage.setItem("tune.temperature", e.target.value); }} className="w-full accent-[#ea580c]" />
-              <span className="font-mono">{temperature.toFixed(1)}</span>
-            </label>
-            <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-ink-200 bg-white/80 px-2.5 py-1.5 font-mono text-[11px] whitespace-nowrap text-ink-700" title="Drop reasoning from follow-up requests — required by strict gateways like Groq, harmless elsewhere">
+          <div className="mx-auto max-w-3xl space-y-2 px-4 pb-3">
+            <div>
+              <span className="mb-1 block font-mono text-[11px] text-ink-500">system prompt</span>
               <input
-                type="checkbox"
-                checked={stripReasoning}
+                value={system}
                 onChange={(e) => {
-                  setStripReasoning(e.target.checked);
-                  localStorage.setItem("stripReasoning", e.target.checked ? "1" : "0");
+                  setSystem(e.target.value);
+                  localStorage.setItem("tune.system", e.target.value);
                 }}
-                className="accent-[#ea580c]"
+                placeholder="You are a helpful assistant…"
+                className="w-full rounded-lg border border-ink-200 bg-white/80 px-2.5 py-1.5 text-xs outline-none focus:border-signal-600 focus:ring-2 focus:ring-signal-600/15"
               />
-              strip reasoning
-            </label>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-[1fr_1fr_130px_auto]">
+              <label className="block rounded-lg border border-ink-200 bg-white/80 px-2.5 py-1.5">
+                <span className="mb-0.5 flex items-center justify-between font-mono text-[11px] text-ink-500">
+                  temperature <span className="text-ink-950">{temperature.toFixed(1)}</span>
+                </span>
+                <input type="range" min={0} max={2} step={0.1} value={temperature} onChange={(e) => { setTemperature(Number(e.target.value)); localStorage.setItem("tune.temperature", e.target.value); }} className="w-full accent-[#ea580c]" />
+              </label>
+              <label className="block rounded-lg border border-ink-200 bg-white/80 px-2.5 py-1.5" title="Nucleus sampling — lower values focus the model on likely tokens">
+                <span className="mb-0.5 flex items-center justify-between font-mono text-[11px] text-ink-500">
+                  top-p <span className="text-ink-950">{topP.toFixed(2)}</span>
+                </span>
+                <input type="range" min={0} max={1} step={0.05} value={topP} onChange={(e) => { setTopP(Number(e.target.value)); localStorage.setItem("tune.topP", e.target.value); }} className="w-full accent-[#ea580c]" />
+              </label>
+              <label className="block rounded-lg border border-ink-200 bg-white/80 px-2.5 py-1.5" title="Cap on response length — empty means provider default">
+                <span className="mb-0.5 block font-mono text-[11px] text-ink-500">max tokens</span>
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="∞"
+                  value={maxTokens ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value === "" ? null : Math.max(1, Math.floor(Number(e.target.value) || 0)) || null;
+                    setMaxTokens(v);
+                    localStorage.setItem("tune.maxTokens", v == null ? "" : String(v));
+                  }}
+                  className="w-full bg-transparent font-mono text-xs outline-none placeholder:text-ink-400"
+                />
+              </label>
+              <label className="flex cursor-pointer items-center gap-1.5 self-center rounded-lg border border-ink-200 bg-white/80 px-2.5 py-2 font-mono text-[11px] whitespace-nowrap text-ink-700" title="Drop reasoning from follow-up requests — required by strict gateways like Groq, harmless elsewhere">
+                <input
+                  type="checkbox"
+                  checked={stripReasoning}
+                  onChange={(e) => {
+                    setStripReasoning(e.target.checked);
+                    localStorage.setItem("stripReasoning", e.target.checked ? "1" : "0");
+                  }}
+                  className="accent-[#ea580c]"
+                />
+                strip reasoning
+              </label>
+            </div>
           </div>
         )}
       </header>
@@ -379,6 +531,7 @@ export function ChatView({
           )}
 
           {messages.map((m, mi) => {
+            const umeta = metaFor(m);
             if (m.role === "user") {
               return (
                 <div key={m.id} className="flex animate-rise justify-end" style={{ animationDelay: `${Math.min(mi * 20, 120)}ms` }}>
@@ -390,6 +543,9 @@ export function ChatView({
                     {m.parts.filter((p) => p.type === "text").map((p, i) => (
                       <div key={i} className="whitespace-pre-wrap">{String((p as { text?: string }).text ?? "")}</div>
                     ))}
+                    {umeta.at && (
+                      <div className="mt-1 text-right font-mono text-[10px] opacity-50">{fmtClock(umeta.at)}</div>
+                    )}
                   </div>
                 </div>
               );
@@ -401,6 +557,12 @@ export function ChatView({
               return t.startsWith("tool-") || t.startsWith("dynamic-tool");
             });
             const files = m.parts.filter((p) => p.type === "file");
+            const ameta = metaFor(m);
+            const metricBits = [
+              ameta.ttftMs != null ? `TTFT ${fmtSecs(ameta.ttftMs)}` : "",
+              ameta.tpsEst != null ? `~${ameta.tpsEst} tok/s` : "",
+              ameta.totalMs != null ? `total ${fmtSecs(ameta.totalMs)}` : "",
+            ].filter(Boolean);
             return (
               <div key={m.id} className="flex animate-rise gap-3" style={{ animationDelay: `${Math.min(mi * 20, 120)}ms` }}>
                 <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-ink-950 text-signal-500">
@@ -433,17 +595,45 @@ export function ChatView({
                     return f.url ? <img key={i} src={f.url} alt={f.filename ?? "image"} className="max-h-56 rounded-xl border border-ink-200" /> : null;
                   })}
                   {!busy && texts.length > 0 && (
-                    <button
-                      onClick={() => copyText(m.id, m.parts)}
-                      className="flex cursor-pointer items-center gap-1 font-mono text-[11px] text-ink-400 transition hover:text-ink-950"
-                    >
-                      <Copy size={11} /> {copied === m.id ? "copied" : "copy"}
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => copyText(m.id, m.parts)}
+                        className="flex cursor-pointer items-center gap-1 font-mono text-[11px] text-ink-400 transition hover:text-ink-950"
+                      >
+                        <Copy size={11} /> {copied === m.id ? "copied" : "copy"}
+                      </button>
+                      <span className="ml-auto font-mono text-[10px] text-ink-400">
+                        {[fmtClock(ameta.at), ...metricBits].filter(Boolean).join(" · ")}
+                      </span>
+                    </div>
+                  )}
+                  {busy && (fmtClock(ameta.at) || metricBits.length > 0) && (
+                    <div className="font-mono text-[10px] text-ink-400">
+                      {[fmtClock(ameta.at), ...metricBits].filter(Boolean).join(" · ")}
+                    </div>
                   )}
                 </div>
               </div>
             );
           })}
+
+          {/* No assistant message yet for this turn: show the system working */}
+          {busy && messages.length > 0 && messages[messages.length - 1]?.role === "user" && (
+            <div className="flex animate-rise gap-3">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-ink-950 text-signal-500">
+                {status === "submitted" ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+              </span>
+              <div className="flex items-center gap-2.5 rounded-2xl rounded-tl-md border border-ink-200/80 bg-white/85 px-4 py-3 text-sm text-ink-500 shadow-[0_1px_0_var(--color-ink-200)]">
+                <span className="flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-signal-600" />
+                  <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-signal-600 [animation-delay:150ms]" />
+                  <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-signal-600 [animation-delay:300ms]" />
+                </span>
+                {status === "submitted" ? `Contacting ${model ?? "model"}…` : "Receiving…"}
+                <span className="font-mono text-[11px] text-signal-700">{elapsedSecs.toFixed(1)}s</span>
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="rounded-2xl border border-red-600/25 bg-red-50 px-4 py-3 text-sm text-red-900">
@@ -508,7 +698,7 @@ export function ChatView({
               >
                 <ImagePlus size={17} />
               </button>
-              <span className="ml-1 hidden font-mono text-[11px] text-ink-400 sm:block">⏎ send · ⇧⏎ newline · 📎 vision</span>
+              <span className="ml-1 hidden font-mono text-[11px] text-ink-400 sm:block">⏎ send · ⇧⏎ newline</span>
               <span className="ml-auto flex gap-1.5">
                 {busy && (
                   <button onClick={stop} className="flex cursor-pointer items-center gap-1.5 rounded-xl bg-red-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-red-700">

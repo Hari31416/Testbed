@@ -38,7 +38,7 @@ export function ChatHistory({
           <span className="block truncate font-display text-[19px] leading-none font-semibold tracking-tight text-[#f2ede1]">
             Testbed
           </span>
-          <span className="mt-0.5 block font-mono text-[10px] tracking-[0.16em] text-ink-400 uppercase">BYOK · client-only</span>
+          <span className="mt-0.5 block font-mono text-[10px] tracking-[0.16em] text-ink-400 uppercase">BYOK</span>
         </span>
         <button onClick={onCollapse} className="grid h-8 w-8 shrink-0 cursor-pointer place-items-center rounded-lg text-ink-400 transition hover:bg-white/10 hover:text-white" aria-label="Collapse sidebar">
           <PanelLeftClose size={16} />
@@ -94,10 +94,6 @@ export function ChatHistory({
           </p>
         )}
       </div>
-
-      <p className="font-mono text-[10px] leading-relaxed text-ink-500">
-        Keys in IndexedDB. Requests go straight to the baseURL — nothing passes through our servers.
-      </p>
     </div>
   );
 }

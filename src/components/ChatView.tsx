@@ -172,7 +172,10 @@ export function ChatView({
   const [images, setImages] = useState<{ url: string; mediaType: string; name: string }[]>([]);
   const [system, setSystem] = useState(initialSettings.system);
   const [temperature, setTemperature] = useState(initialSettings.temperature);
-  const [topP, setTopP] = useState(initialSettings.topP);
+  const [topP, setTopP] = useState(() => {
+    const p = initialSettings.topP;
+    return Number.isFinite(p) && p > 0 ? Math.min(1, Math.max(0.01, p)) : 1;
+  });
   const [maxTokens, setMaxTokens] = useState<number | null>(initialSettings.maxTokens);
   const [stripReasoning, setStripReasoning] = useState(initialSettings.stripReasoning);
   const [tuning, setTuning] = useState(false);
@@ -214,11 +217,12 @@ export function ChatView({
 
   const transport = useMemo(() => {
     if (!provider || !model) return null;
+    const safeTopP = Number.isFinite(topP) && topP > 0 ? Math.min(1, Math.max(0.01, topP)) : 1;
     const agent = new ToolLoopAgent({
       model: clientModel(provider.baseURL, provider.apiKey, model, provider.proxyPrefix, { stripReasoning }),
       instructions: system,
       temperature,
-      topP,
+      topP: safeTopP,
       maxOutputTokens: maxTokens ?? undefined,
       tools: testTools,
     } as never);
@@ -459,7 +463,7 @@ export function ChatView({
                 <span className="mb-0.5 flex items-center justify-between font-mono text-[11px] text-ink-500">
                   top-p <span className="text-ink-950">{topP.toFixed(2)}</span>
                 </span>
-                <input type="range" min={0} max={1} step={0.05} value={topP} onChange={(e) => { setTopP(Number(e.target.value)); localStorage.setItem("tune.topP", e.target.value); }} className="w-full accent-[#ea580c]" />
+                <input type="range" min={0.05} max={1} step={0.05} value={topP} onChange={(e) => { setTopP(Number(e.target.value)); localStorage.setItem("tune.topP", e.target.value); }} className="w-full accent-[#ea580c]" />
               </label>
               <label className="block rounded-lg border border-ink-200 bg-white/80 px-2.5 py-1.5" title="Cap on response length — empty means provider default">
                 <span className="mb-0.5 block font-mono text-[11px] text-ink-500">max tokens</span>

@@ -9,14 +9,16 @@ import { cn } from "./lib/utils";
 
 const DEFAULT_SYSTEM = "You are a helpful assistant. Use tools when asked.";
 const defaultSettings = (): ChatSettings => {
-  const temp = Number(localStorage.getItem("tune.temperature"));
-  const topP = Number(localStorage.getItem("tune.topP"));
+  const tempRaw = localStorage.getItem("tune.temperature");
+  const topPRaw = localStorage.getItem("tune.topP");
   const maxTokensRaw = localStorage.getItem("tune.maxTokens");
+  const temp = tempRaw !== null ? Number(tempRaw) : 0.7;
+  const topP = topPRaw !== null ? Number(topPRaw) : 1;
   const maxTokens = maxTokensRaw ? Math.max(1, Math.floor(Number(maxTokensRaw))) : null;
   return {
     system: localStorage.getItem("tune.system") || DEFAULT_SYSTEM,
     temperature: Number.isFinite(temp) ? Math.min(2, Math.max(0, temp)) : 0.7,
-    topP: Number.isFinite(topP) ? Math.min(1, Math.max(0, topP)) : 1,
+    topP: Number.isFinite(topP) && topP > 0 ? Math.min(1, Math.max(0.01, topP)) : 1,
     maxTokens: maxTokens && Number.isFinite(maxTokens) ? maxTokens : null,
     stripReasoning: localStorage.getItem("stripReasoning") !== "0",
   };
@@ -72,7 +74,7 @@ export default function App() {
           setViewSettings({
             system: chat.systemPrompt ?? DEFAULT_SYSTEM,
             temperature: chat.temperature ?? 0.7,
-            topP: chat.topP ?? 1,
+            topP: chat.topP && chat.topP > 0 ? chat.topP : 1,
             maxTokens: chat.maxTokens ?? null,
             stripReasoning: chat.stripReasoning ?? localStorage.getItem("stripReasoning") !== "0",
           });
@@ -108,7 +110,7 @@ export default function App() {
       setViewSettings({
         system: chat.systemPrompt ?? DEFAULT_SYSTEM,
         temperature: chat.temperature ?? 0.7,
-        topP: chat.topP ?? 1,
+        topP: chat.topP && chat.topP > 0 ? chat.topP : 1,
         maxTokens: chat.maxTokens ?? null,
         stripReasoning: chat.stripReasoning ?? true,
       });

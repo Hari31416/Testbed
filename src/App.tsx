@@ -1,112 +1,268 @@
-import { FlaskConical, PanelLeft } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import { ChatView } from "./components/ChatView";
-import { ModelPicker } from "./components/ModelPicker";
-import { ProviderPanel } from "./components/ProviderPanel";
-import { db, type Provider } from "./lib/db";
+import { PanelLeftOpen } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ChatHistory } from "./components/ChatHistory";
+import { ChatView, type ChatSettings, type PersistSnapshot } from "./components/ChatView";
+import { ProviderModal } from "./components/ProviderModal";
+import { createChat, deleteChat, listChats, loadMessages, replaceMessages, updateChat, type PersistedMessage } from "./lib/chats";
+import { db, type Chat, type Provider } from "./lib/db";
 import { cn } from "./lib/utils";
+
+const DEFAULT_SYSTEM = "You are a helpful assistant. Use tools when asked.";
+const defaultSettings = (): ChatSettings => ({
+  system: DEFAULT_SYSTEM,
+  temperature: 0.7,
+  stripReasoning: localStorage.getItem("stripReasoning") !== "0",
+});
 
 export default function App() {
   const [providers, setProviders] = useState<Provider[]>([]);
-  const [activeProviderId, setActiveProviderId] = useState<string | null>(() => localStorage.getItem("activeProvider"));
-  const [activeModel, setActiveModel] = useState<string | null>(() => localStorage.getItem("activeModel"));
-  const [tick, setTick] = useState(0);
-  const [drawer, setDrawer] = useState(false);
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem("sidebar") === "0");
 
-  const reload = useCallback(async () => {
+  // Current view (one conversation on screen). viewKey remounts ChatView
+  // when switching conversations; draft->created keeps the same key.
+  const [viewKey, setViewKey] = useState("draft");
+  const [viewChatId, setViewChatId] = useState<string | null>(null);
+  const [viewMessages, setViewMessages] = useState<PersistedMessage[]>([]);
+  const [viewSettings, setViewSettings] = useState<ChatSettings>(defaultSettings);
+  const [viewProviderId, setViewProviderId] = useState<string | null>(() => localStorage.getItem("activeProvider"));
+  const [viewModel, setViewModel] = useState<string | null>(() => localStorage.getItem("activeModel"));
+  const [viewReady, setViewReady] = useState(false);
+
+  // Ref mirrors so callbacks always see current values.
+  const viewKeyRef = useRef("draft");
+  const chatByViewRef = useRef(new Map<string, string>());
+
+  const refreshProviders = useCallback(async () => {
     const all = await db.providers.toArray();
     setProviders(all);
-    const stored = localStorage.getItem("activeProvider");
-    if (stored && all.some((p) => p.id === stored)) setActiveProviderId(stored);
-    else if (all.length) {
-      setActiveProviderId(all[0].id);
-      localStorage.setItem("activeProvider", all[0].id);
-    } else setActiveProviderId(null);
+    return all;
   }, []);
 
+  const refreshChats = useCallback(async () => {
+    setChats(await listChats());
+  }, []);
+
+  // Initial load: providers, chats, then restore last-open conversation.
   useEffect(() => {
-    reload();
-  }, [reload, tick]);
+    (async () => {
+      const all = await refreshProviders();
+      await refreshChats();
+      const lastId = localStorage.getItem("activeChat");
+      if (lastId) {
+        const chat = await db.chats.get(lastId);
+        if (chat) {
+          chatByViewRef.current.set(chat.id, chat.id);
+          viewKeyRef.current = chat.id;
+          setViewChatId(chat.id);
+          setViewProviderId(chat.providerId);
+          setViewModel(chat.modelId);
+          setViewMessages(await loadMessages(chat.id));
+          setViewSettings({
+            system: chat.systemPrompt ?? DEFAULT_SYSTEM,
+            temperature: chat.temperature ?? 0.7,
+            stripReasoning: chat.stripReasoning ?? localStorage.getItem("stripReasoning") !== "0",
+          });
+          setViewKey(chat.id);
+          localStorage.setItem("activeProvider", chat.providerId);
+          if (chat.modelId) localStorage.setItem("activeModel", chat.modelId);
+          setViewReady(true);
+          return;
+        }
+      }
+      // Draft: keep last-used provider/model (or first provider as fallback).
+      if (!localStorage.getItem("activeProvider") && all.length) {
+        setViewProviderId(all[0].id);
+        localStorage.setItem("activeProvider", all[0].id);
+      }
+      setViewReady(true);
+    })();
+  }, [refreshProviders, refreshChats]);
 
-  const provider = providers.find((p) => p.id === activeProviderId) ?? null;
-
-  const sidebar = (
-    <div className="flex h-full flex-col gap-6 overflow-auto p-4">
-      <div className="flex items-center gap-2.5">
-        <span className="grid h-9 w-9 place-items-center rounded-xl bg-signal-600 text-white shadow-[0_4px_16px_-4px_var(--color-signal-600)]">
-          <FlaskConical size={17} />
-        </span>
-        <span>
-          <span className="block font-display text-[19px] leading-none font-semibold tracking-tight text-[#f2ede1]">
-            Testbed
-          </span>
-          <span className="mt-0.5 block font-mono text-[10px] tracking-[0.16em] text-ink-400 uppercase">BYOK · client-only</span>
-        </span>
-      </div>
-
-      <ProviderPanel providers={providers} activeId={activeProviderId} onChange={setProviders} onRefresh={() => setTick((t) => t + 1)} />
-
-      <div className="h-px bg-white/[0.08]" />
-
-      <ModelPicker
-        provider={provider}
-        activeModel={activeModel}
-        onPick={(m) => {
-          setActiveModel(m);
-          localStorage.setItem("activeModel", m);
-          setDrawer(false);
-        }}
-      />
-
-      <p className="mt-auto font-mono text-[10px] leading-relaxed text-ink-500">
-        Keys live in IndexedDB. Requests go straight to the baseURL — nothing passes through our servers. Static-safe for GitHub Pages.
-      </p>
-    </div>
+  const openChat = useCallback(
+    async (id: string) => {
+      const chat = await db.chats.get(id);
+      if (!chat) return;
+      setViewReady(false);
+      chatByViewRef.current.set(chat.id, chat.id);
+      viewKeyRef.current = chat.id;
+      setViewChatId(chat.id);
+      setViewProviderId(chat.providerId);
+      setViewModel(chat.modelId);
+      setViewMessages(await loadMessages(chat.id));
+      setViewSettings({
+        system: chat.systemPrompt ?? DEFAULT_SYSTEM,
+        temperature: chat.temperature ?? 0.7,
+        stripReasoning: chat.stripReasoning ?? true,
+      });
+      localStorage.setItem("activeChat", chat.id);
+      localStorage.setItem("activeProvider", chat.providerId);
+      if (chat.modelId) localStorage.setItem("activeModel", chat.modelId);
+      setViewKey(chat.id);
+      setViewReady(true);
+    },
+    [],
   );
+
+  const newChat = useCallback(() => {
+    const key = `draft-${Date.now()}`;
+    viewKeyRef.current = key;
+    setViewChatId(null);
+    setViewMessages([]);
+    setViewSettings(defaultSettings());
+    localStorage.removeItem("activeChat");
+    setViewKey(key);
+    setViewReady(true);
+  }, []);
+
+  const onPersist = useCallback(
+    async (persistKey: string, snap: PersistSnapshot) => {
+      const settings = {
+        systemPrompt: snap.system,
+        temperature: snap.temperature,
+        stripReasoning: snap.stripReasoning,
+      };
+      let id = chatByViewRef.current.get(persistKey) ?? null;
+      if (!snap.messages.length) {
+        // Settings-only persist (no thread yet) — nothing to store for drafts.
+        if (id) {
+          await updateChat(id, settings);
+          refreshChats();
+        }
+        return;
+      }
+      if (!id) {
+        const chat = await createChat({
+          providerId: snap.providerId ?? "",
+          modelId: snap.modelId ?? "",
+          ...settings,
+        });
+        chatByViewRef.current.set(persistKey, chat.id);
+        id = chat.id;
+      }
+      await replaceMessages(id, snap.messages);
+      await updateChat(id, {
+        providerId: snap.providerId ?? "",
+        modelId: snap.modelId ?? "",
+        ...settings,
+      });
+      // Highlight the row if this view is still on screen.
+      if (persistKey === viewKeyRef.current) {
+        setViewChatId(id);
+        localStorage.setItem("activeChat", id);
+      }
+      refreshChats();
+    },
+    [refreshChats],
+  );
+
+  const onModelChange = useCallback(
+    async (m: string) => {
+      setViewModel(m);
+      localStorage.setItem("activeModel", m);
+      const id = chatByViewRef.current.get(viewKeyRef.current);
+      if (id) {
+        await updateChat(id, { modelId: m });
+        refreshChats();
+      }
+    },
+    [refreshChats],
+  );
+
+  const onSelectProvider = useCallback(
+    async (id: string) => {
+      setViewProviderId(id);
+      localStorage.setItem("activeProvider", id);
+      const chatId = chatByViewRef.current.get(viewKeyRef.current);
+      if (chatId) {
+        await updateChat(chatId, { providerId: id });
+        refreshChats();
+      }
+    },
+    [refreshChats],
+  );
+
+  const onDeleteChat = useCallback(
+    async (id: string) => {
+      await deleteChat(id);
+      for (const [k, v] of chatByViewRef.current) if (v === id) chatByViewRef.current.delete(k);
+      setViewChatId((cur) => {
+        if (cur === id) newChat();
+        return cur === id ? null : cur;
+      });
+      refreshChats();
+    },
+    [newChat, refreshChats],
+  );
+
+  const provider = providers.find((p) => p.id === viewProviderId) ?? null;
+  const providersById = new Map(providers.map((p) => [p.id, p]));
 
   return (
     <div className="flex h-full">
-      <aside className="hidden w-[320px] shrink-0 bg-ink-950 md:block">{sidebar}</aside>
-
-      {/* mobile drawer */}
-      <div className={cn("fixed inset-0 z-40 md:hidden", drawer ? "block" : "hidden")}>
-        <div className="absolute inset-0 bg-black/50" onClick={() => setDrawer(false)} />
-        <aside className="absolute inset-y-0 left-0 w-[320px] max-w-[85vw] bg-ink-950 shadow-2xl">{sidebar}</aside>
-      </div>
+      <aside
+        className={cn(
+          "shrink-0 overflow-hidden bg-ink-950 transition-[width] duration-200",
+          collapsed ? "w-0" : "w-[300px] max-w-[85vw]",
+        )}
+      >
+        {!collapsed && (
+          <ChatHistory
+            chats={chats}
+            activeId={viewChatId}
+            providersById={providersById}
+            onSelect={openChat}
+            onNew={newChat}
+            onDelete={onDeleteChat}
+            onCollapse={() => {
+              setCollapsed(true);
+              localStorage.setItem("sidebar", "0");
+            }}
+          />
+        )}
+      </aside>
 
       <main className="relative min-w-0 flex-1">
-        <button
-          onClick={() => setDrawer(true)}
-          className="absolute top-3 left-3 z-20 grid h-9 w-9 cursor-pointer place-items-center rounded-xl border border-ink-200 bg-white/90 shadow-sm md:hidden"
-          aria-label="Open providers"
-        >
-          <PanelLeft size={16} />
-        </button>
-        {provider && activeModel ? (
-          <ChatView key={`${provider.id}:${activeModel}`} provider={provider} model={activeModel} />
+        {collapsed && (
+          <button
+            onClick={() => {
+              setCollapsed(false);
+              localStorage.setItem("sidebar", "1");
+            }}
+            className="absolute top-3 left-3 z-20 grid h-9 w-9 cursor-pointer place-items-center rounded-xl border border-ink-200 bg-white/90 shadow-sm transition hover:border-ink-400"
+            aria-label="Open history"
+          >
+            <PanelLeftOpen size={16} />
+          </button>
+        )}
+        {viewReady ? (
+          <ChatView
+            key={viewKey}
+            viewKey={viewKey}
+            chatId={viewChatId}
+            provider={provider}
+            model={viewModel}
+            initialMessages={viewMessages}
+            initialSettings={viewSettings}
+            onOpenProviders={() => setModalOpen(true)}
+            onModelChange={onModelChange}
+            onPersist={onPersist}
+          />
         ) : (
-          <div className="dotgrid grid h-full place-items-center p-6">
-            <div className="max-w-md rounded-2xl border border-ink-200 bg-white/85 p-8 text-center shadow-sm">
-              <span className="mx-auto grid h-11 w-11 place-items-center rounded-2xl bg-ink-950 text-signal-500">
-                <FlaskConical size={19} />
-              </span>
-              <h1 className="mt-4 font-display text-3xl font-medium tracking-tight">
-                Plug in a provider, <em className="text-signal-600">pick a model.</em>
-              </h1>
-              <p className="mt-2 text-sm leading-relaxed text-ink-500">
-                Add an OpenAI-compatible base URL + key{drawer ? "" : " in the left panel"}, sync <span className="font-mono text-xs">/models</span>, and
-                start probing streaming, tools and vision.
-              </p>
-              <button
-                onClick={() => setDrawer(true)}
-                className="mt-5 cursor-pointer rounded-xl bg-ink-950 px-4 py-2 text-sm font-medium text-white md:hidden"
-              >
-                Open providers
-              </button>
-            </div>
-          </div>
+          <div className="dotgrid grid h-full place-items-center" />
         )}
       </main>
+
+      {modalOpen && (
+        <ProviderModal
+          providers={providers}
+          activeId={viewProviderId}
+          onSelect={onSelectProvider}
+          onChanged={refreshProviders}
+          onClose={() => setModalOpen(false)}
+        />
+      )}
     </div>
   );
 }

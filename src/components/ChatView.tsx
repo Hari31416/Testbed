@@ -2,32 +2,46 @@ import { useChat } from "@ai-sdk/react";
 import { DirectChatTransport, ToolLoopAgent } from "ai";
 import {
   ArrowUp,
-  Bot,
   Brain,
   Copy,
   FlaskConical,
   ImagePlus,
   Loader2,
   OctagonX,
+  PlugZap,
   RotateCcw,
   SlidersHorizontal,
   Sparkles,
   Wrench,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import "katex/dist/katex.min.css";
+import type { PersistedMessage } from "../lib/chats";
 import type { Provider } from "../lib/db";
 import { describeError } from "../lib/errors";
 import { preprocessMath } from "../lib/math";
 import { clientModel } from "../lib/providers";
 import { testTools } from "../lib/test-tools";
 import { cn } from "../lib/utils";
+import { ModelSelect } from "./ModelSelect";
 import { Plaque, StatusDot } from "./ui";
+
+export interface ChatSettings {
+  system: string;
+  temperature: number;
+  stripReasoning: boolean;
+}
+
+export interface PersistSnapshot extends ChatSettings {
+  messages: PersistedMessage[];
+  providerId: string | null;
+  modelId: string | null;
+}
 
 type Part = Record<string, unknown> & { type?: string };
 type Msg = { id: string; role: string; parts: Part[] };
@@ -98,12 +112,32 @@ function ToolCard({ part }: { part: Part }) {
   );
 }
 
-export function ChatView({ provider, model }: { provider: Provider; model: string }) {
+export function ChatView({
+  viewKey,
+  chatId,
+  provider,
+  model,
+  initialMessages,
+  initialSettings,
+  onOpenProviders,
+  onModelChange,
+  onPersist,
+}: {
+  viewKey: string;
+  chatId: string | null;
+  provider: Provider | null;
+  model: string | null;
+  initialMessages: PersistedMessage[];
+  initialSettings: ChatSettings;
+  onOpenProviders: () => void;
+  onModelChange: (m: string) => void;
+  onPersist: (viewKey: string, snap: PersistSnapshot) => void;
+}) {
   const [input, setInput] = useState("");
   const [images, setImages] = useState<{ url: string; mediaType: string; name: string }[]>([]);
-  const [system, setSystem] = useState("You are a helpful assistant. Use tools when asked.");
-  const [temperature, setTemperature] = useState(0.7);
-  const [stripReasoning, setStripReasoning] = useState(() => localStorage.getItem("stripReasoning") !== "0");
+  const [system, setSystem] = useState(initialSettings.system);
+  const [temperature, setTemperature] = useState(initialSettings.temperature);
+  const [stripReasoning, setStripReasoning] = useState(initialSettings.stripReasoning);
   const [tuning, setTuning] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -111,6 +145,7 @@ export function ChatView({ provider, model }: { provider: Provider; model: strin
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const transport = useMemo(() => {
+    if (!provider || !model) return null;
     const agent = new ToolLoopAgent({
       model: clientModel(provider.baseURL, provider.apiKey, model, provider.proxyPrefix, { stripReasoning }),
       instructions: system,
@@ -126,9 +161,10 @@ export function ChatView({ provider, model }: { provider: Provider; model: strin
         return describeError(e);
       },
     } as never);
-  }, [provider.baseURL, provider.apiKey, provider.proxyPrefix, model, system, temperature, stripReasoning]);
+  }, [provider, model, system, temperature, stripReasoning]);
 
   const { messages, sendMessage, status, error, stop, regenerate } = useChat({
+    messages: initialMessages,
     transport,
   } as never) as unknown as {
     messages: Msg[];
@@ -140,6 +176,45 @@ export function ChatView({ provider, model }: { provider: Provider; model: strin
   };
 
   const busy = status === "streaming" || status === "submitted";
+  const ready = !!provider && !!model;
+
+  // ---- persistence: report thread + settings upward on settle & unmount ----
+  // viewKey/chatId are captured at mount so a late unmount-cleanup can never
+  // write this thread into a *different* chat opened afterwards.
+  // Provider/model follow the live props (header switchers).
+  const mountRef = useRef({ viewKey, chatId });
+  const modelRef = useRef(model);
+  modelRef.current = model;
+  const providerIdRef = useRef<string | null>(provider?.id ?? null);
+  providerIdRef.current = provider?.id ?? null;
+  const latestRef = useRef<Msg[]>(messages);
+  latestRef.current = messages;
+  const settingsRef = useRef({ system, temperature, stripReasoning });
+  settingsRef.current = { system, temperature, stripReasoning };
+  const onPersistRef = useRef(onPersist);
+  onPersistRef.current = onPersist;
+  const persistNow = useCallback(() => {
+    const s = settingsRef.current;
+    const m = mountRef.current;
+    onPersistRef.current(m.viewKey, {
+      messages: latestRef.current as unknown as PersistedMessage[],
+      system: s.system,
+      temperature: s.temperature,
+      stripReasoning: s.stripReasoning,
+      providerId: providerIdRef.current,
+      // Model may change after mount (header switcher) — track live.
+      modelId: modelRef.current,
+    });
+  }, []);
+  const prevStatusRef = useRef(status);
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = status;
+    // Only persist on a real settle (busy -> idle), not on mount.
+    if ((status === "ready" || status === "error") && (prev === "streaming" || prev === "submitted")) persistNow();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
+  useEffect(() => () => persistNow(), [persistNow]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -164,7 +239,7 @@ export function ChatView({ provider, model }: { provider: Provider; model: strin
 
   const send = async (text?: string) => {
     const body = (text ?? input).trim();
-    if ((!body && images.length === 0) || busy) return;
+    if ((!body && images.length === 0) || busy || !ready) return;
     const parts: unknown[] = [
       ...images.map((img) => ({ type: "file", mediaType: img.mediaType, url: img.url, filename: img.name })),
       ...(body ? [{ type: "text", text: body }] : []),
@@ -187,16 +262,20 @@ export function ChatView({ provider, model }: { provider: Provider; model: strin
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* header */}
+      {/* header: provider + model live in the composer zone now */}
       <header className="z-10 border-b border-ink-200/70 bg-paper/90 backdrop-blur">
         <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-2 px-4 py-2.5">
-          <span className="inline-flex max-w-64 items-center gap-1.5 truncate rounded-full bg-ink-950 py-1 pr-3 pl-1 text-xs text-[#f5f1e8]">
-            <span className="grid h-5 w-5 place-items-center rounded-full bg-signal-600">
-              <Bot size={12} />
+          <button
+            onClick={onOpenProviders}
+            className="flex max-w-44 cursor-pointer items-center gap-1.5 rounded-full border border-ink-200 bg-white/70 py-1 pr-2.5 pl-1 text-xs font-medium text-ink-700 transition hover:border-signal-600/60 hover:text-signal-700"
+            title={provider ? provider.baseURL : "Add a provider"}
+          >
+            <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink-950 text-signal-500">
+              <PlugZap size={11} />
             </span>
-            <span className="truncate font-mono">{model}</span>
-          </span>
-          <span className="hidden truncate font-mono text-xs text-ink-500 sm:block">{provider.name}</span>
+            <span className="truncate">{provider?.name ?? "Add provider"}</span>
+          </button>
+          <ModelSelect provider={provider} value={model} onPick={onModelChange} />
           <span className="ml-auto flex items-center gap-2">
             {busy && (
               <span className="flex items-center gap-1.5 font-mono text-[11px] text-signal-700">
@@ -247,10 +326,7 @@ export function ChatView({ provider, model }: { provider: Provider; model: strin
               <input
                 type="checkbox"
                 checked={stripReasoning}
-                onChange={(e) => {
-                  setStripReasoning(e.target.checked);
-                  localStorage.setItem("stripReasoning", e.target.checked ? "1" : "0");
-                }}
+                onChange={(e) => setStripReasoning(e.target.checked)}
                 className="accent-[#ea580c]"
               />
               strip reasoning
@@ -265,28 +341,34 @@ export function ChatView({ provider, model }: { provider: Provider; model: strin
           {messages.length === 0 && (
             <div className="animate-rise">
               <div className="dotgrid relative overflow-hidden rounded-2xl border border-ink-200 bg-white/60 px-6 py-10 text-center">
-                <Plaque className="mb-2">New session · {provider.name}</Plaque>
+                <Plaque className="mb-2">New session{provider ? ` · ${provider.name}` : ""}</Plaque>
                 <h2 className="font-display text-3xl font-medium tracking-tight text-ink-950">
                   What are we <em className="text-signal-600">probing</em> today?
                 </h2>
-                <p className="mx-auto mt-2 max-w-md font-mono text-xs leading-relaxed text-ink-500">{model}</p>
+                <p className="mx-auto mt-2 max-w-md font-mono text-xs leading-relaxed text-ink-500">
+                  {!provider ? "Add a provider above to begin." : (model ?? "Pick a model above to begin.")}
+                </p>
               </div>
-              <div className="mt-4 grid gap-2.5 sm:grid-cols-3">
-                {SUGGESTIONS.map((s) => (
-                  <button
-                    key={s.title}
-                    onClick={() => send(s.prompt)}
-                    className="group cursor-pointer rounded-2xl border border-ink-200 bg-white/80 p-3.5 text-left shadow-[0_1px_0_var(--color-ink-200)] transition hover:-translate-y-0.5 hover:border-signal-600/50 hover:shadow-[0_8px_24px_-12px_var(--color-signal-600)]"
-                  >
-                    <span className="grid h-8 w-8 place-items-center rounded-lg bg-ink-950 text-[#f5f1e8] transition group-hover:bg-signal-600">
-                      <s.icon size={15} />
-                    </span>
-                    <span className="mt-2.5 block text-[13px] font-semibold">{s.title}</span>
-                    <span className="mt-1 block font-mono text-[11px] text-ink-500">{s.tag}</span>
-                  </button>
-                ))}
-              </div>
-              <p className="mt-4 text-center font-mono text-[11px] text-ink-400">tip: attach an image + “describe this” to test vision</p>
+              {ready && (
+                <>
+                  <div className="mt-4 grid gap-2.5 sm:grid-cols-3">
+                    {SUGGESTIONS.map((s) => (
+                      <button
+                        key={s.title}
+                        onClick={() => send(s.prompt)}
+                        className="group cursor-pointer rounded-2xl border border-ink-200 bg-white/80 p-3.5 text-left shadow-[0_1px_0_var(--color-ink-200)] transition hover:-translate-y-0.5 hover:border-signal-600/50 hover:shadow-[0_8px_24px_-12px_var(--color-signal-600)]"
+                      >
+                        <span className="grid h-8 w-8 place-items-center rounded-lg bg-ink-950 text-[#f5f1e8] transition group-hover:bg-signal-600">
+                          <s.icon size={15} />
+                        </span>
+                        <span className="mt-2.5 block text-[13px] font-semibold">{s.title}</span>
+                        <span className="mt-1 block font-mono text-[11px] text-ink-500">{s.tag}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-4 text-center font-mono text-[11px] text-ink-400">tip: attach an image + “describe this” to test vision</p>
+                </>
+              )}
             </div>
           )}
 
@@ -367,7 +449,7 @@ export function ChatView({ provider, model }: { provider: Provider; model: strin
                   {String((error as { stack?: string }).stack ?? error.message)}
                 </pre>
               </details>
-              <span className="mt-2 block font-mono text-xs opacity-70">“Failed to fetch” = CORS/preflight block — use the +proxy field or another provider.</span>
+              <span className="mt-2 block font-mono text-xs opacity-70">“Failed to fetch” = CORS/preflight block — use the proxy field in providers or another provider.</span>
             </div>
           )}
           <div ref={bottomRef} />
@@ -398,6 +480,7 @@ export function ChatView({ provider, model }: { provider: Provider; model: strin
               ref={areaRef}
               rows={1}
               value={input}
+              disabled={!ready}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
@@ -405,14 +488,15 @@ export function ChatView({ provider, model }: { provider: Provider; model: strin
                   send();
                 }
               }}
-              placeholder={`Message ${model}…`}
-              className="max-h-40 w-full resize-none bg-transparent px-4 pt-3 pb-1 text-sm outline-none placeholder:text-ink-400"
+              placeholder={!provider ? "Add a provider to start…" : !model ? "Pick a model above to start…" : `Message ${model}…`}
+              className="max-h-40 w-full resize-none bg-transparent px-4 pt-3 pb-1 text-sm outline-none placeholder:text-ink-400 disabled:cursor-not-allowed"
             />
             <div className="flex items-center gap-1 px-2.5 pb-2.5">
               <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { onFiles(e.target.files); e.target.value = ""; }} />
               <button
                 onClick={() => fileRef.current?.click()}
-                className="grid h-8 w-8 cursor-pointer place-items-center rounded-lg text-ink-500 transition hover:bg-ink-950/5 hover:text-ink-950"
+                disabled={!ready}
+                className="grid h-8 w-8 cursor-pointer place-items-center rounded-lg text-ink-500 transition hover:bg-ink-950/5 hover:text-ink-950 disabled:opacity-40"
                 title="Attach images"
                 aria-label="Attach images"
               >
@@ -427,7 +511,7 @@ export function ChatView({ provider, model }: { provider: Provider; model: strin
                 )}
                 <button
                   onClick={() => send()}
-                  disabled={busy || (!input.trim() && images.length === 0)}
+                  disabled={busy || !ready || (!input.trim() && images.length === 0)}
                   className="grid h-9 w-9 cursor-pointer place-items-center rounded-xl bg-signal-600 text-white shadow-[0_4px_14px_-4px_var(--color-signal-600)] transition hover:bg-signal-700 disabled:opacity-40"
                   aria-label="Send"
                 >

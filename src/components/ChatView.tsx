@@ -10,6 +10,7 @@ import {
   OctagonX,
   PenLine,
   PlugZap,
+  RotateCcw,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
@@ -46,6 +47,12 @@ export interface PersistSnapshot extends ChatSettings {
   providerId: string | null;
   modelId: string | null;
 }
+
+export const DEFAULT_SYSTEM = 'You are a helpful assistant. Use tools when asked.'
+export const DEFAULT_TEMP = 0.7
+export const DEFAULT_TOP_P = 1
+export const DEFAULT_MAX_TOKENS: number | null = null
+export const DEFAULT_STRIP = true
 
 function fmtClock(at?: number): string {
   if (!at) return "";
@@ -236,6 +243,56 @@ export function ChatView({
   const fileRef = useRef<HTMLInputElement>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const systemPromptRef = useRef<HTMLTextAreaElement>(null)
+
+  const adjustPromptHeight = useCallback(() => {
+    const el = systemPromptRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    const computed = window.getComputedStyle(el)
+    const lineHeight = parseFloat(computed.lineHeight) || 20
+    const paddingTop = parseFloat(computed.paddingTop) || 6
+    const paddingBottom = parseFloat(computed.paddingBottom) || 6
+    const borderTop = parseFloat(computed.borderTopWidth) || 1
+    const borderBottom = parseFloat(computed.borderBottomWidth) || 1
+    const verticalPadding = paddingTop + paddingBottom + borderTop + borderBottom
+    const maxHeight = lineHeight * 3 + verticalPadding
+    const minHeight = lineHeight + verticalPadding
+    const targetHeight = Math.max(minHeight, Math.min(el.scrollHeight, maxHeight))
+    el.style.height = `${targetHeight}px`
+    el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden'
+  }, [])
+
+  useEffect(() => {
+    if (tuning) {
+      const raf = requestAnimationFrame(adjustPromptHeight)
+      window.addEventListener('resize', adjustPromptHeight)
+      return () => {
+        cancelAnimationFrame(raf)
+        window.removeEventListener('resize', adjustPromptHeight)
+      }
+    }
+  }, [tuning, system, adjustPromptHeight])
+
+  const isModified =
+    system !== DEFAULT_SYSTEM ||
+    Math.abs(temperature - DEFAULT_TEMP) > 0.001 ||
+    Math.abs(topP - DEFAULT_TOP_P) > 0.001 ||
+    maxTokens !== DEFAULT_MAX_TOKENS ||
+    stripReasoning !== DEFAULT_STRIP
+
+  const resetToDefaults = useCallback(() => {
+    setSystem(DEFAULT_SYSTEM)
+    setTemperature(DEFAULT_TEMP)
+    setTopP(DEFAULT_TOP_P)
+    setMaxTokens(DEFAULT_MAX_TOKENS)
+    setStripReasoning(DEFAULT_STRIP)
+    localStorage.setItem('tune.system', DEFAULT_SYSTEM)
+    localStorage.setItem('tune.temperature', String(DEFAULT_TEMP))
+    localStorage.setItem('tune.topP', String(DEFAULT_TOP_P))
+    localStorage.setItem('tune.maxTokens', '')
+    localStorage.setItem('stripReasoning', DEFAULT_STRIP ? '1' : '0')
+  }, [])
 
   // Per-message lab metrics (timestamps, TTFT, tok/s). Seeded from history,
   // merged into message metadata on persist.
@@ -473,11 +530,15 @@ export function ChatView({
             <button
               onClick={() => setTuning((t) => !t)}
               className={cn(
-                "flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition",
-                tuning ? "border-signal-600/50 bg-signal-50 text-signal-700" : "border-ink-200 bg-white/70 text-ink-700 hover:border-ink-400",
+                'flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition',
+                tuning ? 'border-signal-600/50 bg-signal-50 text-signal-700' : 'border-ink-200 bg-white/70 text-ink-700 hover:border-ink-400',
               )}
             >
-              <SlidersHorizontal size={13} /> Tune
+              <SlidersHorizontal size={13} />
+              <span>Tune</span>
+              {isModified && (
+                <span className="h-1.5 w-1.5 rounded-full bg-signal-600" title="Custom parameters active" />
+              )}
             </button>
             {!busy && (
               <button
@@ -498,59 +559,286 @@ export function ChatView({
           </span>
         </div>
         {tuning && (
-          <div className="mx-auto max-w-3xl space-y-2 px-4 pb-3">
-            <div>
-              <span className="mb-1 block font-mono text-[11px] text-ink-500">system prompt</span>
-              <input
-                value={system}
-                onChange={(e) => {
-                  setSystem(e.target.value);
-                  localStorage.setItem("tune.system", e.target.value);
-                }}
-                placeholder="You are a helpful assistant…"
-                className="w-full rounded-lg border border-ink-200 bg-white/80 px-2.5 py-1.5 text-xs outline-none focus:border-signal-600 focus:ring-2 focus:ring-signal-600/15"
-              />
-            </div>
-            <div className="grid gap-2 sm:grid-cols-[1fr_1fr_130px_auto]">
-              <label className="block rounded-lg border border-ink-200 bg-white/80 px-2.5 py-1.5">
-                <span className="mb-0.5 flex items-center justify-between font-mono text-[11px] text-ink-500">
-                  temperature <span className="text-ink-950">{temperature.toFixed(1)}</span>
-                </span>
-                <input type="range" min={0} max={2} step={0.1} value={temperature} onChange={(e) => { setTemperature(Number(e.target.value)); localStorage.setItem("tune.temperature", e.target.value); }} className="w-full accent-[#ea580c]" />
-              </label>
-              <label className="block rounded-lg border border-ink-200 bg-white/80 px-2.5 py-1.5" title="Nucleus sampling — lower values focus the model on likely tokens">
-                <span className="mb-0.5 flex items-center justify-between font-mono text-[11px] text-ink-500">
-                  top-p <span className="text-ink-950">{topP.toFixed(2)}</span>
-                </span>
-                <input type="range" min={0.05} max={1} step={0.05} value={topP} onChange={(e) => { setTopP(Number(e.target.value)); localStorage.setItem("tune.topP", e.target.value); }} className="w-full accent-[#ea580c]" />
-              </label>
-              <label className="block rounded-lg border border-ink-200 bg-white/80 px-2.5 py-1.5" title="Cap on response length — empty means provider default">
-                <span className="mb-0.5 block font-mono text-[11px] text-ink-500">max tokens</span>
-                <input
-                  type="number"
-                  min={1}
-                  placeholder="∞"
-                  value={maxTokens ?? ""}
+          <div className="mx-auto max-w-3xl px-4 pb-3 animate-rise">
+            <div className="rounded-xl border border-ink-200/90 bg-white/85 p-3.5 shadow-xs backdrop-blur-xs">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-ink-500">
+                    Model Parameters & Instructions
+                  </span>
+                  {isModified && (
+                    <span className="inline-flex items-center rounded-full bg-signal-100 px-2 py-0.5 font-mono text-[10px] font-medium text-signal-700">
+                      customized
+                    </span>
+                  )}
+                </div>
+                {isModified && (
+                  <button
+                    type="button"
+                    onClick={resetToDefaults}
+                    className="flex cursor-pointer items-center gap-1 font-mono text-[11px] text-ink-500 transition hover:text-signal-700"
+                    title="Reset all settings to defaults"
+                  >
+                    <RotateCcw size={11} /> Reset defaults
+                  </button>
+                )}
+              </div>
+
+              {/* system prompt */}
+              <div className="mb-2.5">
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="font-mono text-[11px] text-ink-500">system prompt</span>
+                  {system !== DEFAULT_SYSTEM && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSystem(DEFAULT_SYSTEM)
+                        localStorage.setItem('tune.system', DEFAULT_SYSTEM)
+                        adjustPromptHeight()
+                      }}
+                      className="cursor-pointer font-mono text-[10px] text-ink-400 transition hover:text-signal-700"
+                      title="Revert system prompt to default"
+                    >
+                      revert default
+                    </button>
+                  )}
+                </div>
+                <textarea
+                  ref={systemPromptRef}
+                  rows={1}
+                  value={system}
                   onChange={(e) => {
-                    const v = e.target.value === "" ? null : Math.max(1, Math.floor(Number(e.target.value) || 0)) || null;
-                    setMaxTokens(v);
-                    localStorage.setItem("tune.maxTokens", v == null ? "" : String(v));
+                    setSystem(e.target.value)
+                    localStorage.setItem('tune.system', e.target.value)
+                    adjustPromptHeight()
                   }}
-                  className="w-full bg-transparent font-mono text-xs outline-none placeholder:text-ink-400"
+                  placeholder="You are a helpful assistant…"
+                  className="w-full resize-none rounded-lg border border-ink-200 bg-white/90 px-2.5 py-1.5 font-mono text-xs leading-5 text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-signal-600 focus:ring-2 focus:ring-signal-600/15"
                 />
-              </label>
-              <label className="flex cursor-pointer items-center gap-1.5 self-center rounded-lg border border-ink-200 bg-white/80 px-2.5 py-2 font-mono text-[11px] whitespace-nowrap text-ink-700" title="Drop reasoning from follow-up requests — required by strict gateways like Groq, harmless elsewhere">
-                <input
-                  type="checkbox"
-                  checked={stripReasoning}
-                  onChange={(e) => {
-                    setStripReasoning(e.target.checked);
-                    localStorage.setItem("stripReasoning", e.target.checked ? "1" : "0");
+              </div>
+
+              {/* parameter controls */}
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                {/* Temperature */}
+                <div className="flex flex-col justify-between rounded-lg border border-ink-200 bg-white/70 p-2.5 transition hover:border-ink-300 hover:bg-white">
+                  <div className="mb-1 flex items-center justify-between font-mono text-[11px]">
+                    <span className="text-ink-500" title="Controls randomness: lower is more deterministic, higher is more creative">
+                      temperature
+                    </span>
+                    <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[11px] font-semibold text-ink-950">
+                      {temperature.toFixed(1)}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={2}
+                    step={0.1}
+                    value={temperature}
+                    onChange={(e) => {
+                      const val = Number(e.target.value)
+                      setTemperature(val)
+                      localStorage.setItem('tune.temperature', String(val))
+                    }}
+                    className="my-1.5 w-full cursor-pointer accent-signal-600"
+                  />
+                  <div className="flex items-center justify-between text-[10px] font-mono text-ink-400">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTemperature(0.2)
+                        localStorage.setItem('tune.temperature', '0.2')
+                      }}
+                      className={cn('cursor-pointer transition hover:text-ink-950', Math.abs(temperature - 0.2) < 0.05 && 'font-semibold text-signal-700')}
+                    >
+                      0.2 precise
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTemperature(0.7)
+                        localStorage.setItem('tune.temperature', '0.7')
+                      }}
+                      className={cn('cursor-pointer transition hover:text-ink-950', Math.abs(temperature - 0.7) < 0.05 && 'font-semibold text-signal-700')}
+                    >
+                      0.7 def
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTemperature(1.2)
+                        localStorage.setItem('tune.temperature', '1.2')
+                      }}
+                      className={cn('cursor-pointer transition hover:text-ink-950', Math.abs(temperature - 1.2) < 0.05 && 'font-semibold text-signal-700')}
+                    >
+                      1.2 creative
+                    </button>
+                  </div>
+                </div>
+
+                {/* Top-P */}
+                <div className="flex flex-col justify-between rounded-lg border border-ink-200 bg-white/70 p-2.5 transition hover:border-ink-300 hover:bg-white">
+                  <div className="mb-1 flex items-center justify-between font-mono text-[11px]">
+                    <span className="text-ink-500" title="Nucleus sampling: lower values focus on likely tokens">
+                      top-p
+                    </span>
+                    <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[11px] font-semibold text-ink-950">
+                      {topP.toFixed(2)}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.05}
+                    max={1}
+                    step={0.05}
+                    value={topP}
+                    onChange={(e) => {
+                      const val = Number(e.target.value)
+                      setTopP(val)
+                      localStorage.setItem('tune.topP', String(val))
+                    }}
+                    className="my-1.5 w-full cursor-pointer accent-signal-600"
+                  />
+                  <div className="flex items-center justify-between text-[10px] font-mono text-ink-400">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTopP(0.5)
+                        localStorage.setItem('tune.topP', '0.5')
+                      }}
+                      className={cn('cursor-pointer transition hover:text-ink-950', Math.abs(topP - 0.5) < 0.02 && 'font-semibold text-signal-700')}
+                    >
+                      0.50 focus
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTopP(0.9)
+                        localStorage.setItem('tune.topP', '0.9')
+                      }}
+                      className={cn('cursor-pointer transition hover:text-ink-950', Math.abs(topP - 0.9) < 0.02 && 'font-semibold text-signal-700')}
+                    >
+                      0.90
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTopP(1.0)
+                        localStorage.setItem('tune.topP', '1')
+                      }}
+                      className={cn('cursor-pointer transition hover:text-ink-950', Math.abs(topP - 1.0) < 0.02 && 'font-semibold text-signal-700')}
+                    >
+                      1.00 def
+                    </button>
+                  </div>
+                </div>
+
+                {/* Max Tokens */}
+                <div className="flex flex-col justify-between rounded-lg border border-ink-200 bg-white/70 p-2.5 transition hover:border-ink-300 hover:bg-white">
+                  <div className="mb-1 flex items-center justify-between font-mono text-[11px]">
+                    <span className="text-ink-500" title="Cap on response length: empty means provider default">
+                      max tokens
+                    </span>
+                    <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[11px] font-semibold text-ink-950">
+                      {maxTokens ? maxTokens.toLocaleString() : '∞'}
+                    </span>
+                  </div>
+                  <input
+                    type="number"
+                    min={1}
+                    placeholder="∞ (provider default)"
+                    value={maxTokens ?? ''}
+                    onChange={(e) => {
+                      const v = e.target.value === '' ? null : Math.max(1, Math.floor(Number(e.target.value) || 0)) || null
+                      setMaxTokens(v)
+                      localStorage.setItem('tune.maxTokens', v == null ? '' : String(v))
+                    }}
+                    className="my-1 w-full rounded border border-ink-200 bg-white px-2 py-0.5 font-mono text-xs outline-none transition placeholder:text-ink-400 focus:border-signal-600 focus:ring-1 focus:ring-signal-600/15"
+                  />
+                  <div className="flex items-center justify-between text-[10px] font-mono text-ink-400">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMaxTokens(null)
+                        localStorage.setItem('tune.maxTokens', '')
+                      }}
+                      className={cn('cursor-pointer transition hover:text-ink-950', maxTokens === null && 'font-semibold text-signal-700')}
+                    >
+                      ∞
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMaxTokens(1024)
+                        localStorage.setItem('tune.maxTokens', '1024')
+                      }}
+                      className={cn('cursor-pointer transition hover:text-ink-950', maxTokens === 1024 && 'font-semibold text-signal-700')}
+                    >
+                      1k
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMaxTokens(4096)
+                        localStorage.setItem('tune.maxTokens', '4096')
+                      }}
+                      className={cn('cursor-pointer transition hover:text-ink-950', maxTokens === 4096 && 'font-semibold text-signal-700')}
+                    >
+                      4k
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMaxTokens(8192)
+                        localStorage.setItem('tune.maxTokens', '8192')
+                      }}
+                      className={cn('cursor-pointer transition hover:text-ink-950', maxTokens === 8192 && 'font-semibold text-signal-700')}
+                    >
+                      8k
+                    </button>
+                  </div>
+                </div>
+
+                {/* Strip Reasoning */}
+                <div
+                  onClick={() => {
+                    const next = !stripReasoning
+                    setStripReasoning(next)
+                    localStorage.setItem('stripReasoning', next ? '1' : '0')
                   }}
-                  className="accent-[#ea580c]"
-                />
-                strip reasoning
-              </label>
+                  className="flex cursor-pointer flex-col justify-between rounded-lg border border-ink-200 bg-white/70 p-2.5 transition hover:border-ink-300 hover:bg-white select-none"
+                  title="Drop reasoning/thinking tags from follow-up requests — required by strict gateways like Groq"
+                >
+                  <div className="mb-1 flex items-center justify-between font-mono text-[11px]">
+                    <span className="text-ink-500">strip reasoning</span>
+                    <span
+                      className={cn(
+                        'rounded px-1.5 py-0.5 text-[10px] font-semibold',
+                        stripReasoning ? 'bg-signal-100 text-signal-700' : 'bg-ink-100 text-ink-500',
+                      )}
+                    >
+                      {stripReasoning ? 'ON' : 'OFF'}
+                    </span>
+                  </div>
+                  <div className="my-1.5 flex items-center justify-between">
+                    <span className="text-xs text-ink-700">Drop thoughts</span>
+                    <div
+                      className={cn(
+                        'relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors duration-200',
+                        stripReasoning ? 'bg-signal-600' : 'bg-ink-300',
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'inline-block h-3 w-3 transform rounded-full bg-white shadow-xs transition duration-200',
+                          stripReasoning ? 'translate-x-3.5' : 'translate-x-0.5',
+                        )}
+                      />
+                    </div>
+                  </div>
+                  <div className="text-[10px] font-mono text-ink-400">for Groq & strict APIs</div>
+                </div>
+              </div>
             </div>
           </div>
         )}

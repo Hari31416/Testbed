@@ -8,11 +8,14 @@ import { db, type Chat, type Provider } from "./lib/db";
 import { cn } from "./lib/utils";
 
 const DEFAULT_SYSTEM = "You are a helpful assistant. Use tools when asked.";
-const defaultSettings = (): ChatSettings => ({
-  system: DEFAULT_SYSTEM,
-  temperature: 0.7,
-  stripReasoning: localStorage.getItem("stripReasoning") !== "0",
-});
+const defaultSettings = (): ChatSettings => {
+  const temp = Number(localStorage.getItem("tune.temperature"));
+  return {
+    system: localStorage.getItem("tune.system") || DEFAULT_SYSTEM,
+    temperature: Number.isFinite(temp) ? Math.min(2, Math.max(0, temp)) : 0.7,
+    stripReasoning: localStorage.getItem("stripReasoning") !== "0",
+  };
+};
 
 export default function App() {
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -32,6 +35,7 @@ export default function App() {
 
   // Ref mirrors so callbacks always see current values.
   const viewKeyRef = useRef("draft");
+  const viewProviderIdRef = useRef<string | null>(localStorage.getItem("activeProvider"));
   const chatByViewRef = useRef(new Map<string, string>());
 
   const refreshProviders = useCallback(async () => {
@@ -56,6 +60,7 @@ export default function App() {
           chatByViewRef.current.set(chat.id, chat.id);
           viewKeyRef.current = chat.id;
           setViewChatId(chat.id);
+          viewProviderIdRef.current = chat.providerId;
           setViewProviderId(chat.providerId);
           setViewModel(chat.modelId);
           setViewMessages(await loadMessages(chat.id));
@@ -73,6 +78,7 @@ export default function App() {
       }
       // Draft: keep last-used provider/model (or first provider as fallback).
       if (!localStorage.getItem("activeProvider") && all.length) {
+        viewProviderIdRef.current = all[0].id;
         setViewProviderId(all[0].id);
         localStorage.setItem("activeProvider", all[0].id);
       }
@@ -85,6 +91,7 @@ export default function App() {
       const chat = await db.chats.get(id);
       if (!chat) return;
       setViewReady(false);
+      viewProviderIdRef.current = chat.providerId;
       chatByViewRef.current.set(chat.id, chat.id);
       viewKeyRef.current = chat.id;
       setViewChatId(chat.id);
@@ -172,15 +179,25 @@ export default function App() {
 
   const onSelectProvider = useCallback(
     async (id: string) => {
+      // A provider switch always forks a fresh chat: model IDs, tool
+      // behavior and history belong to the old provider. Tune prefs carry
+      // over (they live in localStorage via the composer).
+      if (id === viewProviderIdRef.current) return;
+      viewProviderIdRef.current = id;
       setViewProviderId(id);
       localStorage.setItem("activeProvider", id);
-      const chatId = chatByViewRef.current.get(viewKeyRef.current);
-      if (chatId) {
-        await updateChat(chatId, { providerId: id });
-        refreshChats();
-      }
+      const key = `draft-${Date.now()}`;
+      viewKeyRef.current = key;
+      setViewChatId(null);
+      setViewMessages([]);
+      setViewSettings(defaultSettings());
+      setViewModel(null);
+      localStorage.removeItem("activeChat");
+      localStorage.removeItem("activeModel");
+      setViewKey(key);
+      setViewReady(true);
     },
-    [refreshChats],
+    [],
   );
 
   const onDeleteChat = useCallback(

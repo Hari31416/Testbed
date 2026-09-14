@@ -313,20 +313,26 @@ export function ChatView({
           <div className="mx-auto grid max-w-3xl gap-2 px-4 pb-3 sm:grid-cols-[1fr_140px_auto]">
             <input
               value={system}
-              onChange={(e) => setSystem(e.target.value)}
+              onChange={(e) => {
+                setSystem(e.target.value);
+                localStorage.setItem("tune.system", e.target.value);
+              }}
               placeholder="System prompt…"
               className="rounded-lg border border-ink-200 bg-white/80 px-2.5 py-1.5 text-xs outline-none focus:border-signal-600 focus:ring-2 focus:ring-signal-600/15"
             />
             <label className="flex items-center gap-2 rounded-lg border border-ink-200 bg-white/80 px-2.5 py-1.5 text-xs">
               <span className="font-mono text-ink-500">temp</span>
-              <input type="range" min={0} max={2} step={0.1} value={temperature} onChange={(e) => setTemperature(Number(e.target.value))} className="w-full accent-[#ea580c]" />
+              <input type="range" min={0} max={2} step={0.1} value={temperature} onChange={(e) => { setTemperature(Number(e.target.value)); localStorage.setItem("tune.temperature", e.target.value); }} className="w-full accent-[#ea580c]" />
               <span className="font-mono">{temperature.toFixed(1)}</span>
             </label>
             <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-ink-200 bg-white/80 px-2.5 py-1.5 font-mono text-[11px] whitespace-nowrap text-ink-700" title="Drop reasoning from follow-up requests — required by strict gateways like Groq, harmless elsewhere">
               <input
                 type="checkbox"
                 checked={stripReasoning}
-                onChange={(e) => setStripReasoning(e.target.checked)}
+                onChange={(e) => {
+                  setStripReasoning(e.target.checked);
+                  localStorage.setItem("stripReasoning", e.target.checked ? "1" : "0");
+                }}
                 className="accent-[#ea580c]"
               />
               strip reasoning

@@ -537,6 +537,7 @@ export function ChatView({
           {messages.map((m, mi) => {
             const umeta = metaFor(m);
             if (m.role === "user") {
+              const userTexts = m.parts.filter((p) => p.type === 'text')
               return (
                 <div key={m.id} className="flex animate-rise justify-end" style={{ animationDelay: `${Math.min(mi * 20, 120)}ms` }}>
                   <div className="max-w-[85%] rounded-2xl rounded-br-md bg-ink-950 px-4 py-2.5 text-sm leading-relaxed text-[#f5f1e8] shadow-md">
@@ -544,15 +545,27 @@ export function ChatView({
                       const f = p as unknown as { url?: string; filename?: string };
                       return f.url ? <img key={i} src={f.url} alt={f.filename ?? "upload"} className="mb-2 max-h-56 rounded-xl border border-white/15" /> : null;
                     })}
-                    {m.parts.filter((p) => p.type === "text").map((p, i) => (
-                      <div key={i} className="whitespace-pre-wrap">{String((p as { text?: string }).text ?? "")}</div>
+                    {userTexts.map((p, i) => (
+                      <div key={i} className="whitespace-pre-wrap">{String((p as { text?: string }).text ?? '')}</div>
                     ))}
-                    {umeta.at && (
-                      <div className="mt-1 text-right font-mono text-[10px] opacity-50">{fmtClock(umeta.at)}</div>
+                    {(userTexts.length > 0 || umeta.at) && (
+                      <div className="mt-1 flex items-center gap-3 font-mono text-[#f5f1e8]/50">
+                        {userTexts.length > 0 && (
+                          <button
+                            onClick={() => copyText(m.id, m.parts)}
+                            className="flex cursor-pointer items-center gap-1 text-[11px] transition hover:text-[#f5f1e8]"
+                          >
+                            <Copy size={11} /> {copied === m.id ? 'copied' : 'copy'}
+                          </button>
+                        )}
+                        {umeta.at && (
+                          <span className="ml-auto text-[10px]">{fmtClock(umeta.at)}</span>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
-              );
+              )
             }
             const texts = m.parts.filter((p) => p.type === "text");
             const thinking = m.parts.filter((p) => p.type === "reasoning");
@@ -649,7 +662,6 @@ export function ChatView({
                   {String((error as { stack?: string }).stack ?? error.message)}
                 </pre>
               </details>
-              <span className="mt-2 block font-mono text-xs opacity-70">“Failed to fetch” = CORS/preflight block — use the proxy field in providers or another provider.</span>
             </div>
           )}
           <div ref={bottomRef} />

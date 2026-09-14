@@ -21,7 +21,11 @@ export async function createChat(init: Pick<Chat, "providerId" | "modelId"> & Pa
 }
 
 export async function updateChat(id: string, patch: Partial<Chat>) {
-  await db.chats.update(id, { ...patch, updatedAt: Date.now() });
+  // Note: intentionally does NOT touch updatedAt — recency is driven only by
+  // new message content (see replaceMessages), so viewing chats or tweaking
+  // settings never reshuffles history order.
+  const { updatedAt: _ignored, ...rest } = patch;
+  await db.chats.update(id, rest);
 }
 
 export async function deleteChat(id: string) {
@@ -31,9 +35,13 @@ export async function deleteChat(id: string) {
   });
 }
 
-/** Replace a chat's stored messages with the current in-memory thread. */
+/** Replace a chat's stored messages with the current in-memory thread.
+ *  Skips the write (and the updatedAt bump) when content is unchanged, so
+ *  merely opening a chat or re-saving identical state never reorders history. */
 export async function replaceMessages(chatId: string, messages: PersistedMessage[]) {
   const now = Date.now();
+  const existing = await db.messages.where("chatId").equals(chatId).sortBy("createdAt");
+  if (sameThread(existing, messages)) return;
   await db.transaction("rw", db.chats, db.messages, async () => {
     await db.messages.where("chatId").equals(chatId).delete();
     if (messages.length) {
@@ -51,6 +59,22 @@ export async function replaceMessages(chatId: string, messages: PersistedMessage
     const patch: Partial<Chat> = { updatedAt: now };
     if (title) patch.title = title;
     await db.chats.update(chatId, patch);
+  });
+}
+
+function fingerprint(parts: unknown): string {
+  return JSON.stringify(parts ?? []);
+}
+
+function sameThread(
+  stored: { id: string; parts: unknown[] }[],
+  incoming: PersistedMessage[],
+): boolean {
+  if (stored.length !== incoming.length) return false;
+  return stored.every((row, i) => {
+    const m = incoming[i];
+    if (!m || row.id !== (m.id || "")) return false;
+    return fingerprint(row.parts) === fingerprint(m.parts);
   });
 }
 

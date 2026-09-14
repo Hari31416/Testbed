@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { Cpu, Loader2, RefreshCw, Search } from "lucide-react";
 import { db, type Provider } from "../lib/db";
 import { fetchModels } from "../lib/providers";
 import { cn } from "../lib/utils";
+import { DarkField, Plaque } from "./ui";
 
 export function ModelPicker({
   provider,
@@ -14,60 +16,89 @@ export function ModelPicker({
 }) {
   const [models, setModels] = useState<string[]>([]);
   const [q, setQ] = useState("");
-  const [state, setState] = useState<string>("");
-
-  const loadCache = async () => {
-    if (!provider) return;
-    const cached = await db.models.where("providerId").equals(provider.id).toArray();
-    if (cached.length) setModels(cached.map((c) => c.modelId).sort());
-  };
+  const [state, setState] = useState<"idle" | "loading" | "error">("idle");
+  const [note, setNote] = useState("");
 
   useEffect(() => {
-    loadCache();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [provider?.id]);
+    if (!provider) {
+      setModels([]);
+      return;
+    }
+    db.models.where("providerId").equals(provider.id).toArray().then((cached) => {
+      if (cached.length) setModels(cached.map((c) => c.modelId).sort());
+      else setModels([]);
+    });
+  }, [provider]);
 
   const refresh = async () => {
     if (!provider) return;
-    setState("loading…");
+    setState("loading");
+    setNote("");
     const s = await fetchModels(provider.baseURL, provider.apiKey, provider.proxyPrefix);
     if (!s.ok) {
-      setState(`${s.kind}: ${s.message}`);
+      setState("error");
+      setNote(`${s.kind}: ${s.message}`);
       return;
     }
+    setState("idle");
+    setNote(`${s.models.length} models · just synced`);
     setModels(s.models);
-    setState(`${s.models.length} models`);
     const now = Date.now();
     await db.models.bulkPut(
       s.models.map((m) => ({ id: `${provider.id}:${m}`, providerId: provider.id, modelId: m, updatedAt: now })),
     );
   };
 
-  const filtered = models.filter((m) => m.toLowerCase().includes(q.toLowerCase())).slice(0, 200);
+  const filtered = models.filter((m) => m.toLowerCase().includes(q.toLowerCase())).slice(0, 250);
 
-  if (!provider) return <p className="text-xs text-neutral-500">Select a provider first.</p>;
+  if (!provider) return null;
 
   return (
-    <div className="space-y-2">
+    <section className="space-y-2.5">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold">Models</h2>
-        <button onClick={refresh} className="rounded border px-2 py-0.5 text-xs">Refresh</button>
+        <Plaque tone="dark">
+          Models{models.length > 0 && <span className="text-signal-500"> · {models.length}</span>}
+        </Plaque>
+        <button
+          onClick={refresh}
+          disabled={state === "loading"}
+          className="flex cursor-pointer items-center gap-1 font-mono text-[11px] text-ink-400 transition hover:text-white disabled:opacity-50"
+        >
+          {state === "loading" ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+          Sync
+        </button>
       </div>
-      {state && <p className="text-xs text-neutral-500">{state}</p>}
-      <input className="w-full rounded border px-2 py-1 text-sm" placeholder="Filter models…" value={q} onChange={(e) => setQ(e.target.value)} />
-      <div className="max-h-64 space-y-1 overflow-auto">
-        {filtered.map((m) => (
-          <button
-            key={m}
-            onClick={() => onPick(m)}
-            className={cn("block w-full truncate rounded border px-2 py-1 text-left text-xs", m === activeModel ? "border-black bg-neutral-900 text-white" : "hover:bg-neutral-100")}
-            title={m}
-          >
-            {m}
-          </button>
-        ))}
-        {filtered.length === 0 && <p className="text-xs text-neutral-500">No models cached. Hit Refresh.</p>}
+      {note && <p className="truncate font-mono text-[11px] text-ink-400" title={note}>{note}</p>}
+      <div className="relative">
+        <Search size={13} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-500" />
+        <DarkField placeholder="Filter models…" value={q} onChange={(e) => setQ(e.target.value)} className="pl-8" aria-label="Filter models" />
       </div>
-    </div>
+      <div className="max-h-72 space-y-1 overflow-auto pr-0.5">
+        {filtered.map((m) => {
+          const active = m === activeModel;
+          return (
+            <button
+              key={m}
+              onClick={() => onPick(m)}
+              title={m}
+              className={cn(
+                "flex w-full cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left transition",
+                active
+                  ? "border-signal-500/60 bg-signal-500/[0.14]"
+                  : "border-transparent hover:border-white/10 hover:bg-white/[0.05]",
+              )}
+            >
+              <Cpu size={13} className={cn("shrink-0", active ? "text-signal-500" : "text-ink-500")} />
+              <span className={cn("truncate font-mono text-xs", active ? "text-white" : "text-ink-300")}>{m}</span>
+            </button>
+          );
+        })}
+        {filtered.length === 0 && (
+          <p className="rounded-xl border border-dashed border-white/15 px-3 py-4 text-center text-xs text-ink-400">
+            {models.length === 0 ? "Nothing cached — hit Sync." : "No match for that filter."}
+          </p>
+        )}
+      </div>
+    </section>
   );
 }

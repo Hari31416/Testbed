@@ -1,4 +1,5 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { wrapLanguageModel, type LanguageModelMiddleware } from "ai";
 
 export type ConnectionStatus =
   | { ok: true; models: string[] }
@@ -53,15 +54,43 @@ export async function fetchModels(
 }
 
 /** Build a client-only OpenAI-compatible model (BYOK, direct from browser). */
-export function clientModel(baseURL: string, apiKey: string, modelId: string, proxyPrefix?: string) {
+export function clientModel(
+  baseURL: string,
+  apiKey: string,
+  modelId: string,
+  proxyPrefix?: string,
+  opts?: { stripReasoning?: boolean },
+) {
   // Minimal headers on purpose: extra x-* headers break preflight on some providers (e.g. Gemini).
   const provider = createOpenAICompatible({
     name: "custom",
     baseURL: withProxy(normalizeBaseURL(baseURL), proxyPrefix),
     apiKey,
   });
-  return provider.chatModel(modelId);
+  const model = provider.chatModel(modelId);
+  // Strict gateways (notably Groq) reject `reasoning_content` on *input*,
+  // which the provider replays into follow-up requests of a tool loop even
+  // though it sends that same field in responses. Strip reasoning parts from
+  // the request prompt so multi-step tool calls survive. Display is
+  // unaffected — the live step still streams reasoning to the UI.
+  if (opts?.stripReasoning === false) return model;
+  return wrapLanguageModel({ model, middleware: stripReasoningMiddleware });
 }
+
+const stripReasoningMiddleware: LanguageModelMiddleware = {
+  transformParams: async ({ params }) => {
+    const prompt = params.prompt as unknown as Array<Record<string, unknown>>;
+    if (!Array.isArray(prompt)) return params;
+    const cleaned = prompt.map((m) => {
+      if (m?.role !== "assistant" || !Array.isArray(m.content)) return m;
+      return {
+        ...m,
+        content: (m.content as Array<Record<string, unknown>>).filter((p) => p?.type !== "reasoning"),
+      };
+    });
+    return { ...params, prompt: cleaned as unknown as typeof params.prompt };
+  },
+};
 
 export const PRESETS: { name: string; baseURL: string }[] = [
   { name: "OpenRouter", baseURL: "https://openrouter.ai/api/v1" },

@@ -1,35 +1,42 @@
 import { useChat } from "@ai-sdk/react";
 import { DirectChatTransport, ToolLoopAgent } from "ai";
 import {
+  AlertTriangle,
   ArrowUp,
   Brain,
+  Check,
   Copy,
+  Download,
   FlaskConical,
   ImagePlus,
   KeyRound,
   Loader2,
+  Maximize2,
   OctagonX,
   PenLine,
   PlugZap,
   RotateCcw,
   ShieldCheck,
+  Sliders,
   SlidersHorizontal,
   Sparkles,
   Wrench,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import "katex/dist/katex.min.css";
+import { saveModelCapabilities } from "../lib/capabilities";
 import type { PersistedMessage } from "../lib/chats";
 import { metricsOf, type MessageMetrics } from "../lib/chats";
-import type { Provider } from "../lib/db";
+import { uid, type ModelCapabilities, type Provider } from "../lib/db";
 import { describeError } from "../lib/errors";
 import { preprocessMath } from "../lib/math";
-import { clientModel } from "../lib/providers";
+import { clientModel, generateImage } from "../lib/providers";
 import { testTools } from "../lib/test-tools";
 import { cn } from "../lib/utils";
 import { ModelSelect } from "./ModelSelect";
@@ -146,6 +153,141 @@ async function processImageFile(file: File): Promise<{ url: string; mediaType: s
   });
 }
 
+function Lightbox({
+  url,
+  filename,
+  onClose,
+}: {
+  url: string
+  filename?: string
+  onClose: () => void
+}) {
+  if (typeof document === 'undefined') return null
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-ink-950/85 p-4 backdrop-blur-sm animate-fade"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Image preview"
+    >
+      <div
+        className="relative max-h-[95vh] max-w-[95vw] overflow-hidden rounded-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <img
+          src={url}
+          alt={filename ?? 'Full size preview'}
+          className="max-h-[90vh] max-w-[90vw] rounded-2xl object-contain shadow-2xl"
+        />
+        <div className="absolute top-3 right-3 flex items-center gap-2">
+          <a
+            href={url}
+            download={filename || 'generated-image.png'}
+            className="grid h-8 w-8 cursor-pointer place-items-center rounded-full bg-ink-950/70 text-white backdrop-blur transition hover:bg-ink-900"
+            title="Download image"
+            aria-label="Download image"
+          >
+            <Download size={15} />
+          </a>
+          <button
+            onClick={onClose}
+            className="grid h-8 w-8 cursor-pointer place-items-center rounded-full bg-ink-950/70 text-white backdrop-blur transition hover:bg-ink-900"
+            aria-label="Close preview"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
+function ImageCard({ url, filename }: { url: string; filename?: string }) {
+  const [lightboxOpen, setLightboxOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      if (url.startsWith('data:image/')) {
+        const res = await fetch(url)
+        const blob = await res.blob()
+        await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })])
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+        return
+      }
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    }
+  }
+
+  const handleDownload = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename || `image-${Date.now()}.png`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  }
+
+  return (
+    <div className="group/img relative my-2 overflow-hidden rounded-2xl border border-ink-200/80 bg-ink-950/[0.03] shadow-xs transition hover:shadow-md">
+      <div
+        onClick={() => setLightboxOpen(true)}
+        className="flex cursor-zoom-in justify-center overflow-hidden"
+        title="Click to expand"
+      >
+        <img
+          src={url}
+          alt={filename ?? 'Generated image'}
+          className="max-h-[520px] w-auto max-w-full rounded-xl object-contain transition duration-200 group-hover/img:scale-[1.01]"
+        />
+      </div>
+
+      <div className="absolute top-2.5 right-2.5 flex items-center gap-1 rounded-xl border border-ink-200/80 bg-white/90 p-1 shadow-md backdrop-blur-sm opacity-90 transition hover:opacity-100 sm:opacity-0 sm:group-hover/img:opacity-100">
+        <button
+          onClick={handleCopy}
+          className="grid h-7 w-7 cursor-pointer place-items-center rounded-lg text-ink-600 transition hover:bg-ink-100 hover:text-ink-950"
+          title={copied ? 'Copied' : 'Copy image'}
+          aria-label="Copy image"
+        >
+          {copied ? <Check size={13} className="text-signal-600" /> : <Copy size={13} />}
+        </button>
+        <button
+          onClick={handleDownload}
+          className="grid h-7 w-7 cursor-pointer place-items-center rounded-lg text-ink-600 transition hover:bg-ink-100 hover:text-ink-950"
+          title="Download image"
+          aria-label="Download image"
+        >
+          <Download size={13} />
+        </button>
+        <button
+          onClick={() => setLightboxOpen(true)}
+          className="grid h-7 w-7 cursor-pointer place-items-center rounded-lg text-ink-600 transition hover:bg-ink-100 hover:text-ink-950"
+          title="View full size"
+          aria-label="View full size"
+        >
+          <Maximize2 size={13} />
+        </button>
+      </div>
+
+      {lightboxOpen && (
+        <Lightbox url={url} filename={filename} onClose={() => setLightboxOpen(false)} />
+      )}
+    </div>
+  )
+}
+
 function Markdown({ text }: { text: string }) {
   return (
     <div className="md">
@@ -241,10 +383,18 @@ export function ChatView({
   const [tuning, setTuning] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [modelCaps, setModelCaps] = useState<ModelCapabilities | null>(null);
+  const [generatingImage, setGeneratingImage] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const systemPromptRef = useRef<HTMLTextAreaElement>(null)
+  const systemPromptRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (modelCaps?.supportsVision === false && images.length > 0) {
+      setImages([]);
+    }
+  }, [modelCaps?.supportsVision, images.length]);
 
   const adjustPromptHeight = useCallback(() => {
     const el = systemPromptRef.current
@@ -348,7 +498,7 @@ export function ChatView({
     } as never);
   }, [provider, model, system, temperature, topP, maxTokens, stripReasoning]);
 
-  const { messages, sendMessage, status, error, stop } = useChat({
+  const { messages, sendMessage, status, error, stop, setMessages } = useChat({
     messages: initialMessages,
     transport,
   } as never) as unknown as {
@@ -357,9 +507,10 @@ export function ChatView({
     status: string;
     error: Error | undefined;
     stop: () => void;
+    setMessages: (updater: Msg[] | ((prev: Msg[]) => Msg[])) => void;
   };
 
-  const busy = status === "streaming" || status === "submitted";
+  const busy = status === "streaming" || status === "submitted" || generatingImage;
   const ready = !!provider && !!model;
 
   // ---- persistence: report thread + settings upward on settle & unmount ----
@@ -468,6 +619,10 @@ export function ChatView({
 
   const onFiles = async (files: FileList | null) => {
     if (!files) return;
+    if (modelCaps?.supportsVision === false) {
+      setFileError("The selected model does not support image input.");
+      return;
+    }
     setFileError(null);
     const next: { url: string; mediaType: string; name: string }[] = [];
     for (const f of Array.from(files).slice(0, 4)) {
@@ -485,6 +640,78 @@ export function ChatView({
   const send = async (text?: string) => {
     const body = (text ?? input).trim();
     if ((!body && images.length === 0) || busy || !ready) return;
+
+    if (modelCaps?.supportsImageGen) {
+      if (!body || !provider || !model) return;
+      const userMsg: Msg = {
+        id: uid(),
+        role: "user",
+        parts: [{ type: "text", text: body }],
+      };
+      setInput("");
+      setGeneratingImage(true);
+      setFileError(null);
+      setMessages((prev) => {
+        const updated = [...prev, userMsg];
+        latestRef.current = updated;
+        return updated;
+      });
+      try {
+        const res = await generateImage(
+          provider.baseURL,
+          provider.apiKey,
+          model,
+          body,
+          provider.proxyPrefix,
+        );
+        const assistantMsg: Msg = {
+          id: uid(),
+          role: "assistant",
+          parts: [
+            {
+              type: "file",
+              url: res.url,
+              filename: "generated.png",
+            },
+            ...(res.revisedPrompt ? [{ type: "text", text: res.revisedPrompt }] : []),
+          ],
+        };
+        setMessages((prev) => {
+          const updated = [...prev, assistantMsg];
+          latestRef.current = updated;
+          return updated;
+        });
+        persistNow();
+      } catch (e) {
+        const errMsg: Msg = {
+          id: uid(),
+          role: "assistant",
+          parts: [
+            {
+              type: "text",
+              text: `Image generation failed: ${e instanceof Error ? e.message : String(e)}`,
+              isImageGenError: true,
+              prompt: body,
+            },
+          ],
+        };
+        setMessages((prev) => {
+          const updated = [...prev, errMsg];
+          latestRef.current = updated;
+          return updated;
+        });
+        persistNow();
+      } finally {
+        setGeneratingImage(false);
+      }
+      return;
+    }
+
+    if (modelCaps?.supportsVision === false && images.length > 0) {
+      setFileError("The selected model does not support image input. Please remove attached images.");
+      return;
+    }
+
     turnRef.current = { active: true, wall: Date.now(), perf: performance.now(), firstTokenAt: 0 };
     const parts: unknown[] = [
       ...images.map((img) => ({ type: "file", mediaType: img.mediaType, url: img.url, filename: img.name })),
@@ -493,6 +720,37 @@ export function ChatView({
     setInput("");
     setImages([]);
     await sendMessage({ role: "user", parts } as never);
+  };
+
+  const disableImageGenForCurrentModel = async (retryPrompt?: string) => {
+    if (!provider || !model) return;
+    const newCaps: ModelCapabilities = {
+      supportsVision: modelCaps?.supportsVision ?? true,
+      supportsImageGen: false,
+      isReasoning: modelCaps?.isReasoning ?? false,
+      customizedByUser: true,
+    };
+    await saveModelCapabilities(provider.id, model, newCaps);
+    setModelCaps(newCaps);
+
+    if (retryPrompt) {
+      setMessages((prev) => {
+        const cleaned = prev.filter(
+          (m) =>
+            !m.parts.some(
+              (p) =>
+                (p as { isImageGenError?: boolean }).isImageGenError ||
+                (typeof (p as { text?: string }).text === "string" &&
+                  (p as { text: string }).text.startsWith("Image generation failed:")),
+            ),
+        );
+        latestRef.current = cleaned;
+        return cleaned;
+      });
+      setTimeout(() => {
+        send(retryPrompt);
+      }, 50);
+    }
   };
 
   const copyText = async (id: string, parts: Part[]) => {
@@ -538,11 +796,16 @@ export function ChatView({
               <span>Set key</span>
             </button>
           )}
-          <ModelSelect provider={provider} value={model} onPick={onModelChange} />
+          <ModelSelect
+            provider={provider}
+            value={model}
+            onPick={onModelChange}
+            onCapabilitiesChange={setModelCaps}
+          />
           <span className="ml-auto flex items-center gap-2">
             {busy && (
               <span className="flex items-center gap-1.5 font-mono text-[11px] text-signal-700">
-                <StatusDot tone="live" /> streaming
+                <StatusDot tone="live" /> {generatingImage ? "generating" : "streaming"}
               </span>
             )}
             <button
@@ -914,7 +1177,7 @@ export function ChatView({
                   <div className="max-w-[85%] rounded-2xl rounded-br-md bg-ink-950 px-4 py-2.5 text-sm leading-relaxed text-[#f5f1e8] shadow-md">
                     {m.parts.filter((p) => p.type === "file").map((p, i) => {
                       const f = p as unknown as { url?: string; filename?: string };
-                      return f.url ? <img key={i} src={f.url} alt={f.filename ?? "upload"} className="mb-2 max-h-56 rounded-xl border border-white/15" /> : null;
+                      return f.url ? <ImageCard key={i} url={f.url} filename={f.filename ?? "upload"} /> : null;
                     })}
                     {userTexts.map((p, i) => (
                       <div key={i} className="whitespace-pre-wrap">{String((p as { text?: string }).text ?? '')}</div>
@@ -965,9 +1228,65 @@ export function ChatView({
                       <div className="mt-1 whitespace-pre-wrap italic">{String((p as { text?: string }).text ?? "")}</div>
                     </details>
                   ))}
-                  {texts.map((p, i) => (
-                    <Markdown key={`t${i}`} text={String((p as { text?: string }).text ?? "")} />
-                  ))}
+                  {texts.map((p, i) => {
+                    const textContent = String((p as { text?: string }).text ?? "");
+                    const isImgGenError =
+                      (p as { isImageGenError?: boolean }).isImageGenError ||
+                      textContent.startsWith("Image generation failed:");
+                    const lastUserMsg = messages
+                      .slice(0, mi)
+                      .reverse()
+                      .find((x) => x.role === "user");
+                    const userTextPart = lastUserMsg?.parts.find((x) => x.type === "text") as
+                      | { text?: string }
+                      | undefined;
+                    const nearestPrompt =
+                      (p as { prompt?: string }).prompt || userTextPart?.text;
+
+                    if (isImgGenError) {
+                      return (
+                        <div
+                          key={`t${i}`}
+                          className="my-1 space-y-2.5 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3.5 text-xs text-ink-900"
+                        >
+                          <div className="flex items-start gap-2.5">
+                            <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-amber-500/20 text-amber-800">
+                              <AlertTriangle size={14} />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-semibold text-amber-950">
+                                Image generation endpoint failed (404 / unsupported)
+                              </p>
+                              <p className="mt-1 font-mono text-[11px] leading-relaxed text-ink-600 break-words">
+                                {textContent}
+                              </p>
+                              <p className="mt-2 text-ink-700">
+                                This provider does not support the OpenAI <code>/images/generations</code> endpoint for this model. If this is a conversational chat model, turn off Image Generation to use standard chat.
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 pt-1">
+                            <button
+                              onClick={() => disableImageGenForCurrentModel(nearestPrompt)}
+                              className="flex cursor-pointer items-center gap-1.5 rounded-lg bg-signal-600 px-3 py-1.5 font-medium text-white shadow-xs transition hover:bg-signal-700"
+                            >
+                              <RotateCcw size={12} />
+                              <span>Turn off Image Gen & Retry as Chat</span>
+                            </button>
+                            <button
+                              onClick={() => disableImageGenForCurrentModel()}
+                              className="flex cursor-pointer items-center gap-1 rounded-lg border border-ink-300 bg-white px-2.5 py-1.5 font-medium text-ink-700 transition hover:bg-ink-100"
+                            >
+                              <Sliders size={12} />
+                              <span>Turn off Image Gen only</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return <Markdown key={`t${i}`} text={textContent} />;
+                  })}
                   {busy && mi === messages.length - 1 && texts.length === 0 && tools.length === 0 && (
                     <span className="flex items-center gap-1.5 py-1">
                       <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-signal-600" />
@@ -980,10 +1299,10 @@ export function ChatView({
                   ))}
                   {files.map((p, i) => {
                     const f = p as unknown as { url?: string; filename?: string };
-                    return f.url ? <img key={i} src={f.url} alt={f.filename ?? "image"} className="max-h-56 rounded-xl border border-ink-200" /> : null;
+                    return f.url ? <ImageCard key={i} url={f.url} filename={f.filename ?? "generated-image.png"} /> : null;
                   })}
-                  {!busy && texts.length > 0 && (
-                    <div className="flex items-center gap-3">
+                  {!busy && (texts.length > 0 || files.length > 0) && (
+                    <div className="flex items-center gap-3 pt-1">
                       <button
                         onClick={() => copyText(m.id, m.parts)}
                         className="flex cursor-pointer items-center gap-1 font-mono text-[11px] text-ink-400 transition hover:text-ink-950"
@@ -1009,7 +1328,7 @@ export function ChatView({
           {busy && messages.length > 0 && messages[messages.length - 1]?.role === "user" && (
             <div className="flex animate-rise gap-3">
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-ink-950 text-signal-500">
-                {status === "submitted" ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+                {generatingImage || status === "submitted" ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
               </span>
               <div className="flex items-center gap-2.5 rounded-2xl rounded-tl-md border border-ink-200/80 bg-white/85 px-4 py-3 text-sm text-ink-500 shadow-[0_1px_0_var(--color-ink-200)]">
                 <span className="flex items-center gap-1.5">
@@ -1017,7 +1336,11 @@ export function ChatView({
                   <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-signal-600 [animation-delay:150ms]" />
                   <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-signal-600 [animation-delay:300ms]" />
                 </span>
-                {status === "submitted" ? `Contacting ${model ?? "model"}…` : "Receiving…"}
+                {generatingImage
+                  ? `Generating image with ${model ?? "model"}…`
+                  : status === "submitted"
+                    ? `Contacting ${model ?? "model"}…`
+                    : "Receiving…"}
                 <span className="font-mono text-[11px] text-signal-700">{elapsedSecs.toFixed(1)}s</span>
               </div>
             </div>
@@ -1026,7 +1349,7 @@ export function ChatView({
           {error && (
             <div className="rounded-2xl border border-red-600/25 bg-red-50 px-4 py-3 text-sm text-red-900">
               <b>Request failed.</b>
-              <div className="mt-1 whitespace-pre-wrap">{error.message}</div>
+              <div className="mt-1 whitespace-pre-wrap font-mono text-xs">{describeError(error)}</div>
               <details className="mt-2">
                 <summary className="cursor-pointer font-mono text-xs opacity-70 hover:opacity-100">raw error (for debugging the provider)</summary>
                 <pre className="mt-1 max-h-64 overflow-auto rounded-lg bg-ink-950 p-2.5 font-mono text-[11px] leading-relaxed text-[#e8e2d4]">
@@ -1090,7 +1413,9 @@ export function ChatView({
                     ? "Pick a model above to start…"
                     : needsKey
                       ? `Enter session API key for ${provider.name} (click 'Set key' above)…`
-                      : `Message ${model}…`
+                      : modelCaps?.supportsImageGen
+                        ? `Describe an image to generate with ${model}…`
+                        : `Message ${model}…`
               }
               className="max-h-40 w-full resize-none bg-transparent px-4 pt-3 pb-1 text-sm outline-none placeholder:text-ink-400 disabled:cursor-not-allowed"
             />
@@ -1098,9 +1423,20 @@ export function ChatView({
               <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { onFiles(e.target.files); e.target.value = ""; }} />
               <button
                 onClick={() => fileRef.current?.click()}
-                disabled={!ready}
-                className="grid h-8 w-8 cursor-pointer place-items-center rounded-lg text-ink-500 transition hover:bg-ink-950/5 hover:text-ink-950 disabled:opacity-40"
-                title="Attach images"
+                disabled={!ready || modelCaps?.supportsVision === false || modelCaps?.supportsImageGen === true}
+                className={cn(
+                  "grid h-8 w-8 place-items-center rounded-lg text-ink-500 transition",
+                  modelCaps?.supportsVision === false || modelCaps?.supportsImageGen === true
+                    ? "opacity-30 cursor-not-allowed"
+                    : "cursor-pointer hover:bg-ink-950/5 hover:text-ink-950 disabled:opacity-40"
+                )}
+                title={
+                  modelCaps?.supportsImageGen
+                    ? "Image generation model (text prompt only)"
+                    : modelCaps?.supportsVision === false
+                      ? "This model does not support image input"
+                      : "Attach images"
+                }
                 aria-label="Attach images"
               >
                 <ImagePlus size={17} />

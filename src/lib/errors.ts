@@ -26,15 +26,49 @@ export function describeError(error: unknown): string {
   for (const k of ["statusCode", "status", "code", "url"]) {
     if (e[k] !== undefined && e[k] !== null && e[k] !== "") lines.push(`${k}: ${String(e[k])}`);
   }
+
   // AI SDK APICallError shape
   const body = e.responseBody ?? e.response?.valueOf?.() ?? (e.data as unknown);
-  const bodyText = safeStringify(body);
-  if (bodyText && !lines[0].includes(bodyText.slice(0, 120))) lines.push(`body: ${bodyText}`);
+  if (body) {
+    let parsedMessage: string | undefined;
+    if (typeof body === "string") {
+      try {
+        const parsed = JSON.parse(body) as { error?: { message?: string } };
+        parsedMessage = parsed?.error?.message;
+      } catch {
+        /* not json */
+      }
+    } else if (typeof body === "object" && body !== null) {
+      const b = body as { error?: { message?: string }; message?: string };
+      parsedMessage = b.error?.message ?? b.message;
+    }
+    if (parsedMessage && !lines[0].includes(parsedMessage)) {
+      lines.push(`details: ${parsedMessage}`);
+    } else {
+      const bodyText = safeStringify(body);
+      if (bodyText && !lines[0].includes(bodyText.slice(0, 120))) lines.push(`body: ${bodyText}`);
+    }
+  }
 
   const cause = e.cause;
   if (cause && cause !== error) {
     const c = describeError(cause);
     if (c !== "Unknown error") lines.push(`cause: ${c}`);
+  }
+
+  const lastError = (e as { lastError?: unknown }).lastError;
+  if (lastError && lastError !== error && lastError !== cause) {
+    const c = describeError(lastError);
+    if (c !== "Unknown error") lines.push(`underlying error: ${c}`);
+  }
+
+  const errors = (e as { errors?: unknown[] }).errors;
+  if (Array.isArray(errors) && errors.length > 0) {
+    const last = errors[errors.length - 1];
+    if (last && last !== error && last !== cause && last !== lastError) {
+      const c = describeError(last);
+      if (c !== "Unknown error") lines.push(`attempt error: ${c}`);
+    }
   }
 
   // Last resort: the object itself may hold the message (e.g. { error: { message } })

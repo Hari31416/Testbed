@@ -289,9 +289,9 @@ function ImageCard({ url, filename }: { url: string; filename?: string }) {
   )
 }
 
-function Markdown({ text }: { text: string }) {
+function Markdown({ text, className }: { text: string; className?: string }) {
   return (
-    <div className="md">
+    <div className={cn("md", className)}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
@@ -1245,19 +1245,23 @@ export function ChatView({
                 <div className="min-w-0 flex-1 space-y-2.5 rounded-2xl rounded-tl-md border border-ink-200/80 bg-white/85 px-4 py-3 shadow-[0_1px_0_var(--color-ink-200)]">
                   {thinking.map((p, i) => (
                     <details key={`r${i}`} className="rounded-xl bg-parchment/70 px-3 py-2 text-[13px] text-ink-700">
-                      <summary className="flex cursor-pointer items-center gap-1.5 font-medium">
+                      <summary className="flex cursor-pointer items-center gap-1.5 font-medium select-none">
                         <Brain size={13} className="text-signal-600" /> Reasoning
                       </summary>
-                      <div className="mt-1 whitespace-pre-wrap italic">{String((p as { text?: string }).text ?? "")}</div>
+                      <div className="mt-2 text-ink-700">
+                        <Markdown text={String((p as { text?: string }).text ?? "")} className="md-sm" />
+                      </div>
                     </details>
                   ))}
                   {parsedTexts.map((pt, i) =>
                     pt.thought ? (
                       <details key={`inband-r${i}`} className="rounded-xl bg-parchment/70 px-3 py-2 text-[13px] text-ink-700">
-                        <summary className="flex cursor-pointer items-center gap-1.5 font-medium">
+                        <summary className="flex cursor-pointer items-center gap-1.5 font-medium select-none">
                           <Brain size={13} className="text-signal-600" /> Reasoning
                         </summary>
-                        <div className="mt-1 whitespace-pre-wrap italic">{pt.thought}</div>
+                        <div className="mt-2 text-ink-700">
+                          <Markdown text={pt.thought} className="md-sm" />
+                        </div>
                       </details>
                     ) : null
                   )}

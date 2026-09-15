@@ -89,6 +89,22 @@ body {
   line-height: 1.65;
   overflow-wrap: anywhere;
 }
+.md.md-sm {
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+.md.md-sm p {
+  margin: 0.35em 0;
+}
+.md.md-sm h1 {
+  font-size: 1rem;
+}
+.md.md-sm h2 {
+  font-size: 0.925rem;
+}
+.md.md-sm h3 {
+  font-size: 0.85rem;
+}
 .md > *:first-child {
   margin-top: 0;
 }

@@ -38,6 +38,7 @@ import { describeError } from "../lib/errors";
 import { preprocessMath } from "../lib/math";
 import { clientModel, generateImage } from "../lib/providers";
 import { testTools } from "../lib/test-tools";
+import { extractLeadingThought } from "../lib/thoughts";
 import { cn } from "../lib/utils";
 import { ModelSelect } from "./ModelSelect";
 import { Plaque, StatusDot } from "./ui";
@@ -754,7 +755,16 @@ export function ChatView({
   };
 
   const copyText = async (id: string, parts: Part[]) => {
-    const text = parts.filter((p) => p.type === "text").map((p) => String((p as { text?: string }).text ?? "")).join("\n");
+    const textParts = parts.filter((p) => p.type === "text");
+    const cleaned = textParts
+      .map((p) => {
+        const raw = String((p as { text?: string }).text ?? "");
+        return extractLeadingThought(raw).cleanText;
+      })
+      .filter(Boolean)
+      .join("\n");
+    const rawAll = textParts.map((p) => String((p as { text?: string }).text ?? "")).join("\n");
+    const text = cleaned || rawAll;
     try {
       await navigator.clipboard.writeText(text);
       setCopied(id);
@@ -1214,6 +1224,19 @@ export function ChatView({
               ameta.tpsEst != null ? `~${ameta.tpsEst} tok/s` : "",
               ameta.totalMs != null ? `total ${fmtSecs(ameta.totalMs)}` : "",
             ].filter(Boolean);
+
+            const parsedTexts = texts.map((p) => {
+              const textContent = String((p as { text?: string }).text ?? "");
+              const { thought, cleanText } = extractLeadingThought(textContent);
+              return {
+                part: p,
+                rawText: textContent,
+                thought,
+                cleanText,
+              };
+            });
+            const hasVisibleText = parsedTexts.some((pt) => Boolean(pt.cleanText));
+
             return (
               <div key={m.id} className="flex animate-rise gap-3" style={{ animationDelay: `${Math.min(mi * 20, 120)}ms` }}>
                 <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-ink-950 text-signal-500">
@@ -1228,11 +1251,20 @@ export function ChatView({
                       <div className="mt-1 whitespace-pre-wrap italic">{String((p as { text?: string }).text ?? "")}</div>
                     </details>
                   ))}
-                  {texts.map((p, i) => {
-                    const textContent = String((p as { text?: string }).text ?? "");
+                  {parsedTexts.map((pt, i) =>
+                    pt.thought ? (
+                      <details key={`inband-r${i}`} className="rounded-xl bg-parchment/70 px-3 py-2 text-[13px] text-ink-700">
+                        <summary className="flex cursor-pointer items-center gap-1.5 font-medium">
+                          <Brain size={13} className="text-signal-600" /> Reasoning
+                        </summary>
+                        <div className="mt-1 whitespace-pre-wrap italic">{pt.thought}</div>
+                      </details>
+                    ) : null
+                  )}
+                  {parsedTexts.map((pt, i) => {
                     const isImgGenError =
-                      (p as { isImageGenError?: boolean }).isImageGenError ||
-                      textContent.startsWith("Image generation failed:");
+                      (pt.part as { isImageGenError?: boolean }).isImageGenError ||
+                      pt.rawText.startsWith("Image generation failed:");
                     const lastUserMsg = messages
                       .slice(0, mi)
                       .reverse()
@@ -1241,7 +1273,7 @@ export function ChatView({
                       | { text?: string }
                       | undefined;
                     const nearestPrompt =
-                      (p as { prompt?: string }).prompt || userTextPart?.text;
+                      (pt.part as { prompt?: string }).prompt || userTextPart?.text;
 
                     if (isImgGenError) {
                       return (
@@ -1258,7 +1290,7 @@ export function ChatView({
                                 Image generation endpoint failed (404 / unsupported)
                               </p>
                               <p className="mt-1 font-mono text-[11px] leading-relaxed text-ink-600 break-words">
-                                {textContent}
+                                {pt.rawText}
                               </p>
                               <p className="mt-2 text-ink-700">
                                 This provider does not support the OpenAI <code>/images/generations</code> endpoint for this model. If this is a conversational chat model, turn off Image Generation to use standard chat.
@@ -1285,9 +1317,10 @@ export function ChatView({
                       );
                     }
 
-                    return <Markdown key={`t${i}`} text={textContent} />;
+                    if (!pt.cleanText) return null;
+                    return <Markdown key={`t${i}`} text={pt.cleanText} />;
                   })}
-                  {busy && mi === messages.length - 1 && texts.length === 0 && tools.length === 0 && (
+                  {busy && mi === messages.length - 1 && !hasVisibleText && tools.length === 0 && files.length === 0 && (
                     <span className="flex items-center gap-1.5 py-1">
                       <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-signal-600" />
                       <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-signal-600 [animation-delay:150ms]" />

@@ -1,6 +1,7 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { wrapLanguageModel, type LanguageModelMiddleware } from "ai";
 import type { Provider } from "./db";
+import { stripLeadingThought } from "./thoughts";
 
 const SESSION_KEY_PREFIX = "testbed_session_key:";
 
@@ -136,10 +137,27 @@ const stripReasoningMiddleware: LanguageModelMiddleware = {
     const prompt = params.prompt as unknown as Array<Record<string, unknown>>;
     if (!Array.isArray(prompt)) return params;
     const cleaned = prompt.map((m) => {
-      if (m?.role !== "assistant" || !Array.isArray(m.content)) return m;
+      if (m?.role !== "assistant") return m;
+      if (typeof m.content === "string") {
+        return {
+          ...m,
+          content: stripLeadingThought(m.content),
+        };
+      }
+      if (!Array.isArray(m.content)) return m;
       return {
         ...m,
-        content: (m.content as Array<Record<string, unknown>>).filter((p) => p?.type !== "reasoning"),
+        content: (m.content as Array<Record<string, unknown>>)
+          .filter((p) => p?.type !== "reasoning")
+          .map((p) => {
+            if (p?.type === "text" && typeof p.text === "string") {
+              return {
+                ...p,
+                text: stripLeadingThought(p.text),
+              };
+            }
+            return p;
+          }),
       };
     });
     return { ...params, prompt: cleaned as unknown as typeof params.prompt };

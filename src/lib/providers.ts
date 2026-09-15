@@ -146,9 +146,74 @@ const stripReasoningMiddleware: LanguageModelMiddleware = {
   },
 };
 
+export interface GeneratedImageResult {
+  url: string
+  revisedPrompt?: string
+}
+
+export async function generateImage(
+  baseURL: string,
+  apiKey: string,
+  modelId: string,
+  prompt: string,
+  proxyPrefix?: string,
+  opts?: { size?: string },
+): Promise<GeneratedImageResult> {
+  const base = normalizeBaseURL(baseURL)
+  const url = `${withProxy(base, proxyPrefix)}/images/generations`
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`
+  }
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      model: modelId,
+      prompt,
+      n: 1,
+      size: opts?.size ?? '1024x1024',
+      response_format: 'b64_json',
+    }),
+  })
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '')
+    throw new Error(`Image generation failed (${res.status}): ${errText}`)
+  }
+
+  const json = (await res.json().catch(() => null)) as {
+    data?: Array<{ b64_json?: string; url?: string; revised_prompt?: string }>
+  } | null
+
+  const first = json?.data?.[0]
+  if (!first) {
+    throw new Error('No image returned by provider')
+  }
+
+  let imageUrl = ''
+  if (first.b64_json) {
+    imageUrl = `data:image/png;base64,${first.b64_json}`
+  } else if (first.url) {
+    imageUrl = first.url
+  } else {
+    throw new Error('Provider response did not contain image data or URL')
+  }
+
+  return {
+    url: imageUrl,
+    revisedPrompt: first.revised_prompt,
+  }
+}
+
 export const PRESETS: { name: string; baseURL: string }[] = [
-  { name: "OpenRouter", baseURL: "https://openrouter.ai/api/v1" },
-  { name: "Groq", baseURL: "https://api.groq.com/openai/v1" },
-  { name: "Ollama (local)", baseURL: "http://localhost:11434/v1" },
-  { name: "LM Studio (local)", baseURL: "http://localhost:1234/v1" },
-];
+  { name: 'OpenRouter', baseURL: 'https://openrouter.ai/api/v1' },
+  { name: 'Groq', baseURL: 'https://api.groq.com/openai/v1' },
+  { name: 'Ollama (local)', baseURL: 'http://localhost:11434/v1' },
+  { name: 'LM Studio (local)', baseURL: 'http://localhost:1234/v1' },
+]
+

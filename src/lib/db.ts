@@ -10,13 +10,21 @@ export interface Provider {
   isPersisted?: boolean;
 }
 
+export interface ModelCapabilities {
+  supportsVision: boolean
+  supportsImageGen: boolean
+  isReasoning: boolean
+  customizedByUser?: boolean
+}
+
 export interface ProviderModel {
-  id: string; // `${providerId}:${modelId}`
-  providerId: string;
-  modelId: string;
-  pinned?: boolean;
-  raw?: unknown;
-  updatedAt: number;
+  id: string // `${providerId}:${modelId}`
+  providerId: string
+  modelId: string
+  pinned?: boolean
+  capabilities?: ModelCapabilities
+  raw?: unknown
+  updatedAt: number
 }
 
 export interface Chat {

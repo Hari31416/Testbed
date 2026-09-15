@@ -862,9 +862,6 @@ export function ChatView({
             >
               <SlidersHorizontal size={13} />
               <span>Tune</span>
-              {isModified && (
-                <span className="h-1.5 w-1.5 rounded-full bg-signal-600 dark:bg-signal-500" title="Custom parameters active" />
-              )}
             </button>
             {!busy && (
               <button

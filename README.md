@@ -1,6 +1,6 @@
 # Testbed
 
-A high-performance, client-only playground for testing and probing OpenAI-compatible large language models (LLMs). Bring your own API keys, stream completions, test multi-tool function calling, inspect reasoning traces, and evaluate vision models directly in your browser with zero middleman servers.
+A client-only playground for testing and probing OpenAI-compatible large language models (LLMs). Bring your own API keys, stream completions, test multi-tool function calling, inspect reasoning traces, and evaluate vision models directly in your browser with zero middleman servers.
 
 ## Features
 

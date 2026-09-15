@@ -57,22 +57,22 @@ export function ModelCapabilitiesModal({
         className="absolute inset-0 bg-ink-950/55 backdrop-blur-[2px]"
         onClick={onClose}
       />
-      <div className="relative max-h-[90vh] w-full max-w-md animate-rise overflow-y-auto rounded-2xl border border-ink-200 bg-paper p-5 shadow-2xl">
+      <div className="relative max-h-[90vh] w-full max-w-md animate-rise overflow-y-auto rounded-2xl border border-ink-200 bg-paper p-5 shadow-2xl dark:border-ink-800 dark:bg-ink-900 dark:text-[#ede7db]">
         <div className="flex items-center gap-2.5">
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-ink-950 text-signal-500">
+          <span className="grid h-9 w-9 place-items-center rounded-xl bg-ink-950 text-signal-500 dark:bg-ink-800">
             <Sliders size={17} />
           </span>
           <div className="min-w-0 flex-1">
-            <h2 className="font-display text-lg font-semibold tracking-tight">
+            <h2 className="font-display text-lg font-semibold tracking-tight text-ink-950 dark:text-[#f4efe6]">
               Model Capabilities
             </h2>
-            <p className="truncate font-mono text-[11px] text-ink-500" title={modelId}>
+            <p className="truncate font-mono text-[11px] text-ink-500 dark:text-ink-400" title={modelId}>
               {modelId}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="grid h-8 w-8 cursor-pointer place-items-center rounded-lg text-ink-500 hover:bg-ink-950/5 hover:text-ink-950"
+            className="grid h-8 w-8 cursor-pointer place-items-center rounded-lg text-ink-500 hover:bg-ink-950/5 hover:text-ink-950 dark:text-ink-400 dark:hover:bg-white/5 dark:hover:text-white"
             aria-label="Close"
           >
             <X size={16} />
@@ -86,14 +86,14 @@ export function ModelCapabilitiesModal({
             className={cn(
               'flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition',
               supportsVision
-                ? 'border-signal-600/60 bg-signal-50'
-                : 'border-ink-200 bg-white hover:border-ink-400',
+                ? 'border-signal-600/60 bg-signal-50 dark:border-signal-500/60 dark:bg-signal-950/50'
+                : 'border-ink-200 bg-white hover:border-ink-400 dark:border-ink-800 dark:bg-ink-950/60 dark:hover:border-ink-700',
             )}
           >
             <span
               className={cn(
                 'mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md',
-                supportsVision ? 'bg-signal-600 text-white' : 'bg-ink-100 text-ink-600',
+                supportsVision ? 'bg-signal-600 text-white' : 'bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-400',
               )}
             >
               <Eye size={13} />
@@ -106,13 +106,13 @@ export function ModelCapabilitiesModal({
                     'grid h-4 w-4 place-items-center rounded border',
                     supportsVision
                       ? 'border-signal-600 bg-signal-600 text-white'
-                      : 'border-ink-300 bg-white',
+                      : 'border-ink-300 bg-white dark:border-ink-700 dark:bg-ink-900',
                   )}
                 >
                   {supportsVision && <Check size={11} strokeWidth={3} />}
                 </span>
               </div>
-              <p className="mt-0.5 text-xs text-ink-500">
+              <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">
                 Allows attaching and analyzing images in the chat.
               </p>
             </div>
@@ -124,14 +124,14 @@ export function ModelCapabilitiesModal({
             className={cn(
               'flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition',
               supportsImageGen
-                ? 'border-signal-600/60 bg-signal-50'
-                : 'border-ink-200 bg-white hover:border-ink-400',
+                ? 'border-signal-600/60 bg-signal-50 dark:border-signal-500/60 dark:bg-signal-950/50'
+                : 'border-ink-200 bg-white hover:border-ink-400 dark:border-ink-800 dark:bg-ink-950/60 dark:hover:border-ink-700',
             )}
           >
             <span
               className={cn(
                 'mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md',
-                supportsImageGen ? 'bg-signal-600 text-white' : 'bg-ink-100 text-ink-600',
+                supportsImageGen ? 'bg-signal-600 text-white' : 'bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-400',
               )}
             >
               <ImageIcon size={13} />
@@ -146,13 +146,13 @@ export function ModelCapabilitiesModal({
                     'grid h-4 w-4 place-items-center rounded border',
                     supportsImageGen
                       ? 'border-signal-600 bg-signal-600 text-white'
-                      : 'border-ink-300 bg-white',
+                      : 'border-ink-300 bg-white dark:border-ink-700 dark:bg-ink-900',
                   )}
                 >
                   {supportsImageGen && <Check size={11} strokeWidth={3} />}
                 </span>
               </div>
-              <p className="mt-0.5 text-xs text-ink-500">
+              <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">
                 Only for standalone image engines (DALL-E 3, Flux). Multimodal chat models (like Gemini) generate content in Chat and should leave this unchecked.
               </p>
             </div>
@@ -164,14 +164,14 @@ export function ModelCapabilitiesModal({
             className={cn(
               'flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition',
               isReasoning
-                ? 'border-signal-600/60 bg-signal-50'
-                : 'border-ink-200 bg-white hover:border-ink-400',
+                ? 'border-signal-600/60 bg-signal-50 dark:border-signal-500/60 dark:bg-signal-950/50'
+                : 'border-ink-200 bg-white hover:border-ink-400 dark:border-ink-800 dark:bg-ink-950/60 dark:hover:border-ink-700',
             )}
           >
             <span
               className={cn(
                 'mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md',
-                isReasoning ? 'bg-signal-600 text-white' : 'bg-ink-100 text-ink-600',
+                isReasoning ? 'bg-signal-600 text-white' : 'bg-ink-100 text-ink-600 dark:bg-ink-800 dark:text-ink-400',
               )}
             >
               <Brain size={13} />
@@ -184,13 +184,13 @@ export function ModelCapabilitiesModal({
                     'grid h-4 w-4 place-items-center rounded border',
                     isReasoning
                       ? 'border-signal-600 bg-signal-600 text-white'
-                      : 'border-ink-300 bg-white',
+                      : 'border-ink-300 bg-white dark:border-ink-700 dark:bg-ink-900',
                   )}
                 >
                   {isReasoning && <Check size={11} strokeWidth={3} />}
                 </span>
               </div>
-              <p className="mt-0.5 text-xs text-ink-500">
+              <p className="mt-0.5 text-xs text-ink-500 dark:text-ink-400">
                 Strips reasoning blocks from prompt history during tool execution loops.
               </p>
             </div>

@@ -12,6 +12,7 @@ import {
   KeyRound,
   Loader2,
   Maximize2,
+  Moon,
   OctagonX,
   PenLine,
   PlugZap,
@@ -20,6 +21,7 @@ import {
   Sliders,
   SlidersHorizontal,
   Sparkles,
+  Sun,
   Wrench,
   X,
 } from "lucide-react";
@@ -38,6 +40,7 @@ import { describeError } from "../lib/errors";
 import { preprocessMath } from "../lib/math";
 import { clientModel, generateImage } from "../lib/providers";
 import { testTools } from "../lib/test-tools";
+import { useTheme } from "../lib/theme";
 import { extractLeadingThought } from "../lib/thoughts";
 import { cn } from "../lib/utils";
 import { ModelSelect } from "./ModelSelect";
@@ -242,7 +245,7 @@ function ImageCard({ url, filename }: { url: string; filename?: string }) {
   }
 
   return (
-    <div className="group/img relative my-2 overflow-hidden rounded-2xl border border-ink-200/80 bg-ink-950/[0.03] shadow-xs transition hover:shadow-md">
+    <div className="group/img relative my-2 overflow-hidden rounded-2xl border border-ink-200/80 bg-ink-950/[0.03] shadow-xs transition hover:shadow-md dark:border-ink-800 dark:bg-ink-950/40">
       <div
         onClick={() => setLightboxOpen(true)}
         className="flex cursor-zoom-in justify-center overflow-hidden"
@@ -255,10 +258,10 @@ function ImageCard({ url, filename }: { url: string; filename?: string }) {
         />
       </div>
 
-      <div className="absolute top-2.5 right-2.5 flex items-center gap-1 rounded-xl border border-ink-200/80 bg-white/90 p-1 shadow-md backdrop-blur-sm opacity-90 transition hover:opacity-100 sm:opacity-0 sm:group-hover/img:opacity-100">
+      <div className="absolute top-2.5 right-2.5 flex items-center gap-1 rounded-xl border border-ink-200/80 bg-white/90 p-1 shadow-md backdrop-blur-sm opacity-90 transition hover:opacity-100 sm:opacity-0 sm:group-hover/img:opacity-100 dark:border-ink-700 dark:bg-ink-900/90">
         <button
           onClick={handleCopy}
-          className="grid h-7 w-7 cursor-pointer place-items-center rounded-lg text-ink-600 transition hover:bg-ink-100 hover:text-ink-950"
+          className="grid h-7 w-7 cursor-pointer place-items-center rounded-lg text-ink-600 transition hover:bg-ink-100 hover:text-ink-950 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-white"
           title={copied ? 'Copied' : 'Copy image'}
           aria-label="Copy image"
         >
@@ -266,7 +269,7 @@ function ImageCard({ url, filename }: { url: string; filename?: string }) {
         </button>
         <button
           onClick={handleDownload}
-          className="grid h-7 w-7 cursor-pointer place-items-center rounded-lg text-ink-600 transition hover:bg-ink-100 hover:text-ink-950"
+          className="grid h-7 w-7 cursor-pointer place-items-center rounded-lg text-ink-600 transition hover:bg-ink-100 hover:text-ink-950 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-white"
           title="Download image"
           aria-label="Download image"
         >
@@ -274,7 +277,7 @@ function ImageCard({ url, filename }: { url: string; filename?: string }) {
         </button>
         <button
           onClick={() => setLightboxOpen(true)}
-          className="grid h-7 w-7 cursor-pointer place-items-center rounded-lg text-ink-600 transition hover:bg-ink-100 hover:text-ink-950"
+          className="grid h-7 w-7 cursor-pointer place-items-center rounded-lg text-ink-600 transition hover:bg-ink-100 hover:text-ink-950 dark:text-ink-300 dark:hover:bg-ink-800 dark:hover:text-white"
           title="View full size"
           aria-label="View full size"
         >
@@ -326,20 +329,49 @@ function ToolCard({ part }: { part: Part }) {
   const input = (part as { input?: unknown }).input;
   const output = (part as { output?: unknown }).output ?? (part as { result?: unknown }).result;
   return (
-    <div className={cn("overflow-hidden rounded-xl border text-left", failed ? "border-red-600/25 bg-red-50/70" : done ? "border-emerald-600/25 bg-emerald-50/70" : "border-amber-600/25 bg-amber-50/70")}>
+    <div
+      className={cn(
+        "overflow-hidden rounded-xl border text-left",
+        failed
+          ? "border-red-600/25 bg-red-50/70 text-red-950 dark:border-red-500/30 dark:bg-red-950/30 dark:text-red-200"
+          : done
+            ? "border-emerald-600/25 bg-emerald-50/70 text-emerald-950 dark:border-emerald-500/30 dark:bg-emerald-950/30 dark:text-emerald-200"
+            : "border-amber-600/25 bg-amber-50/70 text-amber-950 dark:border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-200",
+      )}
+    >
       <div className="flex items-center gap-2 px-2.5 py-1.5">
-        <span className={cn("grid h-6 w-6 place-items-center rounded-md", failed ? "bg-red-600/15 text-red-700" : done ? "bg-emerald-600/15 text-emerald-700" : "bg-amber-600/15 text-amber-700")}>
+        <span
+          className={cn(
+            "grid h-6 w-6 place-items-center rounded-md",
+            failed
+              ? "bg-red-600/15 text-red-700 dark:bg-red-500/20 dark:text-red-400"
+              : done
+                ? "bg-emerald-600/15 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400"
+                : "bg-amber-600/15 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400",
+          )}
+        >
           {running ? <Loader2 size={13} className="animate-spin" /> : <Wrench size={13} />}
         </span>
         <span className="font-mono text-xs font-semibold">{name}</span>
-        <span className={cn("ml-auto font-mono text-[10px] uppercase tracking-wider", failed ? "text-red-700" : done ? "text-emerald-700" : "text-amber-700")}>
+        <span
+          className={cn(
+            "ml-auto font-mono text-[10px] uppercase tracking-wider",
+            failed
+              ? "text-red-700 dark:text-red-400"
+              : done
+                ? "text-emerald-700 dark:text-emerald-400"
+                : "text-amber-700 dark:text-amber-400",
+          )}
+        >
           {label}
         </span>
       </div>
       {(input !== undefined || output !== undefined) && (
-        <details className="border-t border-black/[0.06] px-2.5 py-1.5">
-          <summary className="cursor-pointer font-mono text-[11px] text-ink-500 hover:text-ink-950">payload</summary>
-          <pre className="mt-1 max-h-48 overflow-auto rounded-lg bg-ink-950 p-2 font-mono text-[11px] leading-relaxed text-[#e8e2d4]">
+        <details className="border-t border-black/[0.06] px-2.5 py-1.5 dark:border-white/[0.08]">
+          <summary className="cursor-pointer font-mono text-[11px] text-ink-500 hover:text-ink-950 dark:text-ink-400 dark:hover:text-[#ede7db]">
+            payload
+          </summary>
+          <pre className="mt-1 max-h-48 overflow-auto rounded-lg bg-ink-950 p-2 font-mono text-[11px] leading-relaxed text-[#e8e2d4] dark:bg-[#0d0c0a] dark:border dark:border-ink-800">
             {JSON.stringify({ input, output }, null, 2)}
           </pre>
         </details>
@@ -382,6 +414,7 @@ export function ChatView({
   const [maxTokens, setMaxTokens] = useState<number | null>(initialSettings.maxTokens);
   const [stripReasoning, setStripReasoning] = useState(initialSettings.stripReasoning);
   const [tuning, setTuning] = useState(false);
+  const [theme, , toggleTheme] = useTheme();
   const [copied, setCopied] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [modelCaps, setModelCaps] = useState<ModelCapabilities | null>(null);
@@ -784,14 +817,14 @@ export function ChatView({
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* header: provider + model live in the composer zone now */}
-      <header className="z-10 border-b border-ink-200/70 bg-paper/90 backdrop-blur">
+      <header className="z-10 border-b border-ink-200/70 bg-paper/90 backdrop-blur dark:border-ink-800/80">
         <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-2 px-4 py-2.5">
           <button
             onClick={onOpenProviders}
-            className="flex max-w-44 cursor-pointer items-center gap-1.5 rounded-full border border-ink-200 bg-white/70 py-1 pr-2.5 pl-1 text-xs font-medium text-ink-700 transition hover:border-signal-600/60 hover:text-signal-700"
+            className="flex max-w-44 cursor-pointer items-center gap-1.5 rounded-full border border-ink-200 bg-white/70 py-1 pr-2.5 pl-1 text-xs font-medium text-ink-700 transition hover:border-signal-600/60 hover:text-signal-700 dark:border-ink-800 dark:bg-ink-900/80 dark:text-ink-300 dark:hover:border-signal-500/60 dark:hover:text-signal-400"
             title={provider ? provider.baseURL : "Add a provider"}
           >
-            <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink-950 text-signal-500">
+            <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink-950 text-signal-500 dark:bg-ink-800">
               <PlugZap size={11} />
             </span>
             <span className="truncate">{provider?.name ?? "Add provider"}</span>
@@ -799,10 +832,10 @@ export function ChatView({
           {needsKey && (
             <button
               onClick={onOpenProviders}
-              className="flex cursor-pointer items-center gap-1 rounded-full border border-amber-500/40 bg-amber-50 px-2 py-1 font-mono text-[10px] font-medium text-amber-800 transition hover:bg-amber-100"
+              className="flex cursor-pointer items-center gap-1 rounded-full border border-amber-500/40 bg-amber-50 px-2 py-1 font-mono text-[10px] font-medium text-amber-800 transition hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-950/60"
               title="No API key set for this session — click to provide"
             >
-              <KeyRound size={11} className="text-amber-600" />
+              <KeyRound size={11} className="text-amber-600 dark:text-amber-400" />
               <span>Set key</span>
             </button>
           )}
@@ -814,7 +847,7 @@ export function ChatView({
           />
           <span className="ml-auto flex items-center gap-2">
             {busy && (
-              <span className="flex items-center gap-1.5 font-mono text-[11px] text-signal-700">
+              <span className="flex items-center gap-1.5 font-mono text-[11px] text-signal-700 dark:text-signal-400">
                 <StatusDot tone="live" /> {generatingImage ? "generating" : "streaming"}
               </span>
             )}
@@ -822,23 +855,33 @@ export function ChatView({
               onClick={() => setTuning((t) => !t)}
               className={cn(
                 'flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition',
-                tuning ? 'border-signal-600/50 bg-signal-50 text-signal-700' : 'border-ink-200 bg-white/70 text-ink-700 hover:border-ink-400',
+                tuning
+                  ? 'border-signal-600/50 bg-signal-50 text-signal-700 dark:border-signal-500/50 dark:bg-signal-950/40 dark:text-signal-400'
+                  : 'border-ink-200 bg-white/70 text-ink-700 hover:border-ink-400 dark:border-ink-800 dark:bg-ink-900/80 dark:text-ink-300 dark:hover:border-ink-700',
               )}
             >
               <SlidersHorizontal size={13} />
               <span>Tune</span>
               {isModified && (
-                <span className="h-1.5 w-1.5 rounded-full bg-signal-600" title="Custom parameters active" />
+                <span className="h-1.5 w-1.5 rounded-full bg-signal-600 dark:bg-signal-500" title="Custom parameters active" />
               )}
             </button>
             {!busy && (
               <button
                 onClick={onNewChat}
-                className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-ink-200 bg-white/70 px-2.5 py-1.5 text-xs font-medium text-ink-700 transition hover:border-ink-400"
+                className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-ink-200 bg-white/70 px-2.5 py-1.5 text-xs font-medium text-ink-700 transition hover:border-ink-400 dark:border-ink-800 dark:bg-ink-900/80 dark:text-ink-300 dark:hover:border-ink-700"
               >
                 <PenLine size={13} /> New chat
               </button>
             )}
+            <button
+              onClick={toggleTheme}
+              className="grid h-8 w-8 cursor-pointer place-items-center rounded-lg border border-ink-200 bg-white/70 text-ink-700 transition hover:border-ink-400 dark:border-ink-800 dark:bg-ink-900/80 dark:text-ink-300 dark:hover:border-ink-700"
+              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {theme === "dark" ? <Sun size={13} /> : <Moon size={13} />}
+            </button>
             {busy && (
               <button
                 onClick={stop}
@@ -851,14 +894,14 @@ export function ChatView({
         </div>
         {tuning && (
           <div className="mx-auto max-w-3xl px-4 pb-3 animate-rise">
-            <div className="rounded-xl border border-ink-200/90 bg-white/85 p-3.5 shadow-xs backdrop-blur-xs">
+            <div className="rounded-xl border border-ink-200/90 bg-white/85 p-3.5 shadow-xs backdrop-blur-xs dark:border-ink-800 dark:bg-ink-900/95">
               <div className="mb-2 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-ink-500">
+                  <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-ink-500 dark:text-ink-400">
                     Model Parameters & Instructions
                   </span>
                   {isModified && (
-                    <span className="inline-flex items-center rounded-full bg-signal-100 px-2 py-0.5 font-mono text-[10px] font-medium text-signal-700">
+                    <span className="inline-flex items-center rounded-full bg-signal-100 px-2 py-0.5 font-mono text-[10px] font-medium text-signal-700 dark:bg-signal-950/60 dark:text-signal-400">
                       customized
                     </span>
                   )}
@@ -867,7 +910,7 @@ export function ChatView({
                   <button
                     type="button"
                     onClick={resetToDefaults}
-                    className="flex cursor-pointer items-center gap-1 font-mono text-[11px] text-ink-500 transition hover:text-signal-700"
+                    className="flex cursor-pointer items-center gap-1 font-mono text-[11px] text-ink-500 transition hover:text-signal-700 dark:text-ink-400 dark:hover:text-signal-400"
                     title="Reset all settings to defaults"
                   >
                     <RotateCcw size={11} /> Reset defaults
@@ -878,7 +921,7 @@ export function ChatView({
               {/* system prompt */}
               <div className="mb-2.5">
                 <div className="mb-1 flex items-center justify-between">
-                  <span className="font-mono text-[11px] text-ink-500">system prompt</span>
+                  <span className="font-mono text-[11px] text-ink-500 dark:text-ink-400">system prompt</span>
                   {system !== DEFAULT_SYSTEM && (
                     <button
                       type="button"
@@ -887,7 +930,7 @@ export function ChatView({
                         localStorage.setItem('tune.system', DEFAULT_SYSTEM)
                         adjustPromptHeight()
                       }}
-                      className="cursor-pointer font-mono text-[10px] text-ink-400 transition hover:text-signal-700"
+                      className="cursor-pointer font-mono text-[10px] text-ink-400 transition hover:text-signal-700 dark:hover:text-signal-400"
                       title="Revert system prompt to default"
                     >
                       revert default
@@ -904,19 +947,19 @@ export function ChatView({
                     adjustPromptHeight()
                   }}
                   placeholder="You are a helpful assistant…"
-                  className="w-full resize-none rounded-lg border border-ink-200 bg-white/90 px-2.5 py-1.5 font-mono text-xs leading-5 text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-signal-600 focus:ring-2 focus:ring-signal-600/15"
+                  className="w-full resize-none rounded-lg border border-ink-200 bg-white/90 px-2.5 py-1.5 font-mono text-xs leading-5 text-ink-900 outline-none transition placeholder:text-ink-400 focus:border-signal-600 focus:ring-2 focus:ring-signal-600/15 dark:border-ink-800 dark:bg-ink-950 dark:text-[#ede7db] dark:placeholder:text-ink-500 dark:focus:border-signal-500 dark:focus:ring-signal-500/20"
                 />
               </div>
 
               {/* parameter controls */}
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                 {/* Temperature */}
-                <div className="flex flex-col justify-between rounded-lg border border-ink-200 bg-white/70 p-2.5 transition hover:border-ink-300 hover:bg-white">
+                <div className="flex flex-col justify-between rounded-lg border border-ink-200 bg-white/70 p-2.5 transition hover:border-ink-300 hover:bg-white dark:border-ink-800 dark:bg-ink-950/60 dark:hover:border-ink-700 dark:hover:bg-ink-950">
                   <div className="mb-1 flex items-center justify-between font-mono text-[11px]">
-                    <span className="text-ink-500" title="Controls randomness: lower is more deterministic, higher is more creative">
+                    <span className="text-ink-500 dark:text-ink-400" title="Controls randomness: lower is more deterministic, higher is more creative">
                       temperature
                     </span>
-                    <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[11px] font-semibold text-ink-950">
+                    <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[11px] font-semibold text-ink-950 dark:bg-ink-800 dark:text-[#ede7db]">
                       {temperature.toFixed(1)}
                     </span>
                   </div>
@@ -933,14 +976,14 @@ export function ChatView({
                     }}
                     className="my-1.5 w-full cursor-pointer accent-signal-600"
                   />
-                  <div className="flex items-center justify-between text-[10px] font-mono text-ink-400">
+                  <div className="flex items-center justify-between text-[10px] font-mono text-ink-400 dark:text-ink-500">
                     <button
                       type="button"
                       onClick={() => {
                         setTemperature(0.2)
                         localStorage.setItem('tune.temperature', '0.2')
                       }}
-                      className={cn('cursor-pointer transition hover:text-ink-950', Math.abs(temperature - 0.2) < 0.05 && 'font-semibold text-signal-700')}
+                      className={cn('cursor-pointer transition hover:text-ink-950 dark:hover:text-white', Math.abs(temperature - 0.2) < 0.05 && 'font-semibold text-signal-700 dark:text-signal-400')}
                     >
                       0.2 precise
                     </button>
@@ -950,7 +993,7 @@ export function ChatView({
                         setTemperature(0.7)
                         localStorage.setItem('tune.temperature', '0.7')
                       }}
-                      className={cn('cursor-pointer transition hover:text-ink-950', Math.abs(temperature - 0.7) < 0.05 && 'font-semibold text-signal-700')}
+                      className={cn('cursor-pointer transition hover:text-ink-950 dark:hover:text-white', Math.abs(temperature - 0.7) < 0.05 && 'font-semibold text-signal-700 dark:text-signal-400')}
                     >
                       0.7 def
                     </button>
@@ -960,7 +1003,7 @@ export function ChatView({
                         setTemperature(1.2)
                         localStorage.setItem('tune.temperature', '1.2')
                       }}
-                      className={cn('cursor-pointer transition hover:text-ink-950', Math.abs(temperature - 1.2) < 0.05 && 'font-semibold text-signal-700')}
+                      className={cn('cursor-pointer transition hover:text-ink-950 dark:hover:text-white', Math.abs(temperature - 1.2) < 0.05 && 'font-semibold text-signal-700 dark:text-signal-400')}
                     >
                       1.2 creative
                     </button>
@@ -968,12 +1011,12 @@ export function ChatView({
                 </div>
 
                 {/* Top-P */}
-                <div className="flex flex-col justify-between rounded-lg border border-ink-200 bg-white/70 p-2.5 transition hover:border-ink-300 hover:bg-white">
+                <div className="flex flex-col justify-between rounded-lg border border-ink-200 bg-white/70 p-2.5 transition hover:border-ink-300 hover:bg-white dark:border-ink-800 dark:bg-ink-950/60 dark:hover:border-ink-700 dark:hover:bg-ink-950">
                   <div className="mb-1 flex items-center justify-between font-mono text-[11px]">
-                    <span className="text-ink-500" title="Nucleus sampling: lower values focus on likely tokens">
+                    <span className="text-ink-500 dark:text-ink-400" title="Nucleus sampling: lower values focus on likely tokens">
                       top-p
                     </span>
-                    <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[11px] font-semibold text-ink-950">
+                    <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[11px] font-semibold text-ink-950 dark:bg-ink-800 dark:text-[#ede7db]">
                       {topP.toFixed(2)}
                     </span>
                   </div>
@@ -990,14 +1033,14 @@ export function ChatView({
                     }}
                     className="my-1.5 w-full cursor-pointer accent-signal-600"
                   />
-                  <div className="flex items-center justify-between text-[10px] font-mono text-ink-400">
+                  <div className="flex items-center justify-between text-[10px] font-mono text-ink-400 dark:text-ink-500">
                     <button
                       type="button"
                       onClick={() => {
                         setTopP(0.5)
                         localStorage.setItem('tune.topP', '0.5')
                       }}
-                      className={cn('cursor-pointer transition hover:text-ink-950', Math.abs(topP - 0.5) < 0.02 && 'font-semibold text-signal-700')}
+                      className={cn('cursor-pointer transition hover:text-ink-950 dark:hover:text-white', Math.abs(topP - 0.5) < 0.02 && 'font-semibold text-signal-700 dark:text-signal-400')}
                     >
                       0.50 focus
                     </button>
@@ -1007,7 +1050,7 @@ export function ChatView({
                         setTopP(0.9)
                         localStorage.setItem('tune.topP', '0.9')
                       }}
-                      className={cn('cursor-pointer transition hover:text-ink-950', Math.abs(topP - 0.9) < 0.02 && 'font-semibold text-signal-700')}
+                      className={cn('cursor-pointer transition hover:text-ink-950 dark:hover:text-white', Math.abs(topP - 0.9) < 0.02 && 'font-semibold text-signal-700 dark:text-signal-400')}
                     >
                       0.90
                     </button>
@@ -1017,7 +1060,7 @@ export function ChatView({
                         setTopP(1.0)
                         localStorage.setItem('tune.topP', '1')
                       }}
-                      className={cn('cursor-pointer transition hover:text-ink-950', Math.abs(topP - 1.0) < 0.02 && 'font-semibold text-signal-700')}
+                      className={cn('cursor-pointer transition hover:text-ink-950 dark:hover:text-white', Math.abs(topP - 1.0) < 0.02 && 'font-semibold text-signal-700 dark:text-signal-400')}
                     >
                       1.00 def
                     </button>
@@ -1025,12 +1068,12 @@ export function ChatView({
                 </div>
 
                 {/* Max Tokens */}
-                <div className="flex flex-col justify-between rounded-lg border border-ink-200 bg-white/70 p-2.5 transition hover:border-ink-300 hover:bg-white">
+                <div className="flex flex-col justify-between rounded-lg border border-ink-200 bg-white/70 p-2.5 transition hover:border-ink-300 hover:bg-white dark:border-ink-800 dark:bg-ink-950/60 dark:hover:border-ink-700 dark:hover:bg-ink-950">
                   <div className="mb-1 flex items-center justify-between font-mono text-[11px]">
-                    <span className="text-ink-500" title="Cap on response length: empty means provider default">
+                    <span className="text-ink-500 dark:text-ink-400" title="Cap on response length: empty means provider default">
                       max tokens
                     </span>
-                    <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[11px] font-semibold text-ink-950">
+                    <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[11px] font-semibold text-ink-950 dark:bg-ink-800 dark:text-[#ede7db]">
                       {maxTokens ? maxTokens.toLocaleString() : '∞'}
                     </span>
                   </div>
@@ -1044,16 +1087,16 @@ export function ChatView({
                       setMaxTokens(v)
                       localStorage.setItem('tune.maxTokens', v == null ? '' : String(v))
                     }}
-                    className="my-1 w-full rounded border border-ink-200 bg-white px-2 py-0.5 font-mono text-xs outline-none transition placeholder:text-ink-400 focus:border-signal-600 focus:ring-1 focus:ring-signal-600/15"
+                    className="my-1 w-full rounded border border-ink-200 bg-white px-2 py-0.5 font-mono text-xs outline-none transition placeholder:text-ink-400 focus:border-signal-600 focus:ring-1 focus:ring-signal-600/15 dark:border-ink-800 dark:bg-ink-900 dark:text-[#ede7db] dark:placeholder:text-ink-500 dark:focus:border-signal-500"
                   />
-                  <div className="flex items-center justify-between text-[10px] font-mono text-ink-400">
+                  <div className="flex items-center justify-between text-[10px] font-mono text-ink-400 dark:text-ink-500">
                     <button
                       type="button"
                       onClick={() => {
                         setMaxTokens(null)
                         localStorage.setItem('tune.maxTokens', '')
                       }}
-                      className={cn('cursor-pointer transition hover:text-ink-950', maxTokens === null && 'font-semibold text-signal-700')}
+                      className={cn('cursor-pointer transition hover:text-ink-950 dark:hover:text-white', maxTokens === null && 'font-semibold text-signal-700 dark:text-signal-400')}
                     >
                       ∞
                     </button>
@@ -1063,7 +1106,7 @@ export function ChatView({
                         setMaxTokens(1024)
                         localStorage.setItem('tune.maxTokens', '1024')
                       }}
-                      className={cn('cursor-pointer transition hover:text-ink-950', maxTokens === 1024 && 'font-semibold text-signal-700')}
+                      className={cn('cursor-pointer transition hover:text-ink-950 dark:hover:text-white', maxTokens === 1024 && 'font-semibold text-signal-700 dark:text-signal-400')}
                     >
                       1k
                     </button>
@@ -1073,7 +1116,7 @@ export function ChatView({
                         setMaxTokens(4096)
                         localStorage.setItem('tune.maxTokens', '4096')
                       }}
-                      className={cn('cursor-pointer transition hover:text-ink-950', maxTokens === 4096 && 'font-semibold text-signal-700')}
+                      className={cn('cursor-pointer transition hover:text-ink-950 dark:hover:text-white', maxTokens === 4096 && 'font-semibold text-signal-700 dark:text-signal-400')}
                     >
                       4k
                     </button>
@@ -1083,7 +1126,7 @@ export function ChatView({
                         setMaxTokens(8192)
                         localStorage.setItem('tune.maxTokens', '8192')
                       }}
-                      className={cn('cursor-pointer transition hover:text-ink-950', maxTokens === 8192 && 'font-semibold text-signal-700')}
+                      className={cn('cursor-pointer transition hover:text-ink-950 dark:hover:text-white', maxTokens === 8192 && 'font-semibold text-signal-700 dark:text-signal-400')}
                     >
                       8k
                     </button>
@@ -1097,26 +1140,26 @@ export function ChatView({
                     setStripReasoning(next)
                     localStorage.setItem('stripReasoning', next ? '1' : '0')
                   }}
-                  className="flex cursor-pointer flex-col justify-between rounded-lg border border-ink-200 bg-white/70 p-2.5 transition hover:border-ink-300 hover:bg-white select-none"
+                  className="flex cursor-pointer flex-col justify-between rounded-lg border border-ink-200 bg-white/70 p-2.5 transition hover:border-ink-300 hover:bg-white select-none dark:border-ink-800 dark:bg-ink-950/60 dark:hover:border-ink-700 dark:hover:bg-ink-950"
                   title="Drop reasoning/thinking tags from follow-up requests — required by strict gateways like Groq"
                 >
                   <div className="mb-1 flex items-center justify-between font-mono text-[11px]">
-                    <span className="text-ink-500">strip reasoning</span>
+                    <span className="text-ink-500 dark:text-ink-400">strip reasoning</span>
                     <span
                       className={cn(
                         'rounded px-1.5 py-0.5 text-[10px] font-semibold',
-                        stripReasoning ? 'bg-signal-100 text-signal-700' : 'bg-ink-100 text-ink-500',
+                        stripReasoning ? 'bg-signal-100 text-signal-700 dark:bg-signal-950/60 dark:text-signal-400' : 'bg-ink-100 text-ink-500 dark:bg-ink-800 dark:text-ink-400',
                       )}
                     >
                       {stripReasoning ? 'ON' : 'OFF'}
                     </span>
                   </div>
                   <div className="my-1.5 flex items-center justify-between">
-                    <span className="text-xs text-ink-700">Drop thoughts</span>
+                    <span className="text-xs text-ink-700 dark:text-[#ede7db]">Drop thoughts</span>
                     <div
                       className={cn(
                         'relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors duration-200',
-                        stripReasoning ? 'bg-signal-600' : 'bg-ink-300',
+                        stripReasoning ? 'bg-signal-600' : 'bg-ink-300 dark:bg-ink-700',
                       )}
                     >
                       <span
@@ -1127,7 +1170,7 @@ export function ChatView({
                       />
                     </div>
                   </div>
-                  <div className="text-[10px] font-mono text-ink-400">for Groq & strict APIs</div>
+                  <div className="text-[10px] font-mono text-ink-400 dark:text-ink-500">for Groq & strict APIs</div>
                 </div>
               </div>
             </div>
@@ -1140,17 +1183,17 @@ export function ChatView({
         <div className="mx-auto max-w-3xl space-y-5 px-4 py-6">
           {messages.length === 0 && (
             <div className="animate-rise">
-              <div className="dotgrid relative overflow-hidden rounded-2xl border border-ink-200 bg-white/60 px-6 py-10 text-center">
+              <div className="dotgrid relative overflow-hidden rounded-2xl border border-ink-200 bg-white/60 px-6 py-10 text-center dark:border-ink-800 dark:bg-ink-900/50">
                 <Plaque className="mb-2">New session{provider ? ` · ${provider.name}` : ""}</Plaque>
-                <h2 className="font-display text-3xl font-medium tracking-tight text-ink-950">
-                  What are we <em className="text-signal-600">probing</em> today?
+                <h2 className="font-display text-3xl font-medium tracking-tight text-ink-950 dark:text-[#f4efe6]">
+                  What are we <em className="text-signal-600 dark:text-signal-500">probing</em> today?
                 </h2>
-                <p className="mx-auto mt-2 max-w-md font-mono text-xs leading-relaxed text-ink-500">
+                <p className="mx-auto mt-2 max-w-md font-mono text-xs leading-relaxed text-ink-500 dark:text-ink-400">
                   {!provider ? "Add a provider above to begin." : (model ?? "Pick a model above to begin.")}
                 </p>
                 <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-ink-200 bg-white/80 px-3 py-1 font-mono text-[11px] text-ink-600 shadow-xs">
-                    <ShieldCheck size={13} className="text-signal-600" />
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-ink-200 bg-white/80 px-3 py-1 font-mono text-[11px] text-ink-600 shadow-xs dark:border-ink-800 dark:bg-ink-900/80 dark:text-ink-300">
+                    <ShieldCheck size={13} className="text-signal-600 dark:text-signal-500" />
                     <span>No server required · 100% client-side</span>
                   </span>
                 </div>
@@ -1162,17 +1205,17 @@ export function ChatView({
                       <button
                         key={s.title}
                         onClick={() => send(s.prompt)}
-                        className="group cursor-pointer rounded-2xl border border-ink-200 bg-white/80 p-3.5 text-left shadow-[0_1px_0_var(--color-ink-200)] transition hover:-translate-y-0.5 hover:border-signal-600/50 hover:shadow-[0_8px_24px_-12px_var(--color-signal-600)]"
+                        className="group cursor-pointer rounded-2xl border border-ink-200 bg-white/80 p-3.5 text-left shadow-[0_1px_0_var(--color-ink-200)] transition hover:-translate-y-0.5 hover:border-signal-600/50 hover:shadow-[0_8px_24px_-12px_var(--color-signal-600)] dark:border-ink-800 dark:bg-ink-900/70 dark:shadow-none dark:hover:border-signal-500/50"
                       >
-                        <span className="grid h-8 w-8 place-items-center rounded-lg bg-ink-950 text-[#f5f1e8] transition group-hover:bg-signal-600">
+                        <span className="grid h-8 w-8 place-items-center rounded-lg bg-ink-950 text-[#f5f1e8] transition group-hover:bg-signal-600 dark:bg-ink-800 dark:text-signal-400 dark:group-hover:bg-signal-600 dark:group-hover:text-white">
                           <s.icon size={15} />
                         </span>
-                        <span className="mt-2.5 block text-[13px] font-semibold">{s.title}</span>
-                        <span className="mt-1 block font-mono text-[11px] text-ink-500">{s.tag}</span>
+                        <span className="mt-2.5 block text-[13px] font-semibold text-ink-950 dark:text-[#ede7db]">{s.title}</span>
+                        <span className="mt-1 block font-mono text-[11px] text-ink-500 dark:text-ink-400">{s.tag}</span>
                       </button>
                     ))}
                   </div>
-                  <p className="mt-4 text-center font-mono text-[11px] text-ink-400">tip: attach an image + “describe this” to test vision</p>
+                  <p className="mt-4 text-center font-mono text-[11px] text-ink-400 dark:text-ink-500">tip: attach an image + “describe this” to test vision</p>
                 </>
               )}
             </div>
@@ -1184,7 +1227,7 @@ export function ChatView({
               const userTexts = m.parts.filter((p) => p.type === 'text')
               return (
                 <div key={m.id} className="flex animate-rise justify-end" style={{ animationDelay: `${Math.min(mi * 20, 120)}ms` }}>
-                  <div className="max-w-[85%] rounded-2xl rounded-br-md bg-ink-950 px-4 py-2.5 text-sm leading-relaxed text-[#f5f1e8] shadow-md">
+                  <div className="max-w-[85%] rounded-2xl rounded-br-md bg-ink-950 px-4 py-2.5 text-sm leading-relaxed text-[#f5f1e8] shadow-md dark:border dark:border-ink-800 dark:bg-[#25201a] dark:text-[#f5f1e8]">
                     {m.parts.filter((p) => p.type === "file").map((p, i) => {
                       const f = p as unknown as { url?: string; filename?: string };
                       return f.url ? <ImageCard key={i} url={f.url} filename={f.filename ?? "upload"} /> : null;
@@ -1193,7 +1236,7 @@ export function ChatView({
                       <div key={i} className="whitespace-pre-wrap">{String((p as { text?: string }).text ?? '')}</div>
                     ))}
                     {(userTexts.length > 0 || umeta.at) && (
-                      <div className="mt-1 flex items-center gap-3 font-mono text-[#f5f1e8]/50">
+                      <div className="mt-1 flex items-center gap-3 font-mono text-[#f5f1e8]/50 dark:text-[#f5f1e8]/60">
                         {userTexts.length > 0 && (
                           <button
                             onClick={() => copyText(m.id, m.parts)}
@@ -1239,27 +1282,27 @@ export function ChatView({
 
             return (
               <div key={m.id} className="flex animate-rise gap-3" style={{ animationDelay: `${Math.min(mi * 20, 120)}ms` }}>
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-ink-950 text-signal-500">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-ink-950 text-signal-500 dark:bg-ink-800">
                   <Sparkles size={15} />
                 </span>
-                <div className="min-w-0 flex-1 space-y-2.5 rounded-2xl rounded-tl-md border border-ink-200/80 bg-white/85 px-4 py-3 shadow-[0_1px_0_var(--color-ink-200)]">
+                <div className="min-w-0 flex-1 space-y-2.5 rounded-2xl rounded-tl-md border border-ink-200/80 bg-white/85 px-4 py-3 shadow-[0_1px_0_var(--color-ink-200)] dark:border-ink-800/80 dark:bg-ink-900/85 dark:text-[#ede7db] dark:shadow-none">
                   {thinking.map((p, i) => (
-                    <details key={`r${i}`} className="rounded-xl bg-parchment/70 px-3 py-2 text-[13px] text-ink-700">
+                    <details key={`r${i}`} className="rounded-xl bg-parchment/70 px-3 py-2 text-[13px] text-ink-700 dark:border dark:border-ink-800/60 dark:bg-ink-950/70 dark:text-ink-300">
                       <summary className="flex cursor-pointer items-center gap-1.5 font-medium select-none">
-                        <Brain size={13} className="text-signal-600" /> Reasoning
+                        <Brain size={13} className="text-signal-600 dark:text-signal-500" /> Reasoning
                       </summary>
-                      <div className="mt-2 text-ink-700">
+                      <div className="mt-2 text-ink-700 dark:text-ink-300">
                         <Markdown text={String((p as { text?: string }).text ?? "")} className="md-sm" />
                       </div>
                     </details>
                   ))}
                   {parsedTexts.map((pt, i) =>
                     pt.thought ? (
-                      <details key={`inband-r${i}`} className="rounded-xl bg-parchment/70 px-3 py-2 text-[13px] text-ink-700">
+                      <details key={`inband-r${i}`} className="rounded-xl bg-parchment/70 px-3 py-2 text-[13px] text-ink-700 dark:border dark:border-ink-800/60 dark:bg-ink-950/70 dark:text-ink-300">
                         <summary className="flex cursor-pointer items-center gap-1.5 font-medium select-none">
-                          <Brain size={13} className="text-signal-600" /> Reasoning
+                          <Brain size={13} className="text-signal-600 dark:text-signal-500" /> Reasoning
                         </summary>
-                        <div className="mt-2 text-ink-700">
+                        <div className="mt-2 text-ink-700 dark:text-ink-300">
                           <Markdown text={pt.thought} className="md-sm" />
                         </div>
                       </details>
@@ -1283,20 +1326,20 @@ export function ChatView({
                       return (
                         <div
                           key={`t${i}`}
-                          className="my-1 space-y-2.5 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3.5 text-xs text-ink-900"
+                          className="my-1 space-y-2.5 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3.5 text-xs text-ink-900 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-200"
                         >
                           <div className="flex items-start gap-2.5">
-                            <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-amber-500/20 text-amber-800">
+                            <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-amber-500/20 text-amber-800 dark:bg-amber-500/30 dark:text-amber-300">
                               <AlertTriangle size={14} />
                             </span>
                             <div className="min-w-0 flex-1">
-                              <p className="font-semibold text-amber-950">
+                              <p className="font-semibold text-amber-950 dark:text-amber-200">
                                 Image generation endpoint failed (404 / unsupported)
                               </p>
-                              <p className="mt-1 font-mono text-[11px] leading-relaxed text-ink-600 break-words">
+                              <p className="mt-1 font-mono text-[11px] leading-relaxed text-ink-600 break-words dark:text-ink-400">
                                 {pt.rawText}
                               </p>
-                              <p className="mt-2 text-ink-700">
+                              <p className="mt-2 text-ink-700 dark:text-ink-300">
                                 This provider does not support the OpenAI <code>/images/generations</code> endpoint for this model. If this is a conversational chat model, turn off Image Generation to use standard chat.
                               </p>
                             </div>
@@ -1311,7 +1354,7 @@ export function ChatView({
                             </button>
                             <button
                               onClick={() => disableImageGenForCurrentModel()}
-                              className="flex cursor-pointer items-center gap-1 rounded-lg border border-ink-300 bg-white px-2.5 py-1.5 font-medium text-ink-700 transition hover:bg-ink-100"
+                              className="flex cursor-pointer items-center gap-1 rounded-lg border border-ink-300 bg-white px-2.5 py-1.5 font-medium text-ink-700 transition hover:bg-ink-100 dark:border-ink-700 dark:bg-ink-900 dark:text-ink-300 dark:hover:bg-ink-800"
                             >
                               <Sliders size={12} />
                               <span>Turn off Image Gen only</span>
@@ -1342,17 +1385,17 @@ export function ChatView({
                     <div className="flex items-center gap-3 pt-1">
                       <button
                         onClick={() => copyText(m.id, m.parts)}
-                        className="flex cursor-pointer items-center gap-1 font-mono text-[11px] text-ink-400 transition hover:text-ink-950"
+                        className="flex cursor-pointer items-center gap-1 font-mono text-[11px] text-ink-400 transition hover:text-ink-950 dark:text-ink-500 dark:hover:text-[#ede7db]"
                       >
                         <Copy size={11} /> {copied === m.id ? "copied" : "copy"}
                       </button>
-                      <span className="ml-auto font-mono text-[10px] text-ink-400">
+                      <span className="ml-auto font-mono text-[10px] text-ink-400 dark:text-ink-500">
                         {[fmtClock(ameta.at), ...metricBits].filter(Boolean).join(" · ")}
                       </span>
                     </div>
                   )}
                   {busy && (fmtClock(ameta.at) || metricBits.length > 0) && (
-                    <div className="font-mono text-[10px] text-ink-400">
+                    <div className="font-mono text-[10px] text-ink-400 dark:text-ink-500">
                       {[fmtClock(ameta.at), ...metricBits].filter(Boolean).join(" · ")}
                     </div>
                   )}
@@ -1364,10 +1407,10 @@ export function ChatView({
           {/* No assistant message yet for this turn: show the system working */}
           {busy && messages.length > 0 && messages[messages.length - 1]?.role === "user" && (
             <div className="flex animate-rise gap-3">
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-ink-950 text-signal-500">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-ink-950 text-signal-500 dark:bg-ink-800">
                 {generatingImage || status === "submitted" ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
               </span>
-              <div className="flex items-center gap-2.5 rounded-2xl rounded-tl-md border border-ink-200/80 bg-white/85 px-4 py-3 text-sm text-ink-500 shadow-[0_1px_0_var(--color-ink-200)]">
+              <div className="flex items-center gap-2.5 rounded-2xl rounded-tl-md border border-ink-200/80 bg-white/85 px-4 py-3 text-sm text-ink-500 shadow-[0_1px_0_var(--color-ink-200)] dark:border-ink-800/80 dark:bg-ink-900/85 dark:text-ink-400 dark:shadow-none">
                 <span className="flex items-center gap-1.5">
                   <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-signal-600" />
                   <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-signal-600 [animation-delay:150ms]" />
@@ -1378,18 +1421,18 @@ export function ChatView({
                   : status === "submitted"
                     ? `Contacting ${model ?? "model"}…`
                     : "Receiving…"}
-                <span className="font-mono text-[11px] text-signal-700">{elapsedSecs.toFixed(1)}s</span>
+                <span className="font-mono text-[11px] text-signal-700 dark:text-signal-400">{elapsedSecs.toFixed(1)}s</span>
               </div>
             </div>
           )}
 
           {error && (
-            <div className="rounded-2xl border border-red-600/25 bg-red-50 px-4 py-3 text-sm text-red-900">
+            <div className="rounded-2xl border border-red-600/25 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-500/30 dark:bg-red-950/40 dark:text-red-200">
               <b>Request failed.</b>
               <div className="mt-1 whitespace-pre-wrap font-mono text-xs">{describeError(error)}</div>
               <details className="mt-2">
                 <summary className="cursor-pointer font-mono text-xs opacity-70 hover:opacity-100">raw error (for debugging the provider)</summary>
-                <pre className="mt-1 max-h-64 overflow-auto rounded-lg bg-ink-950 p-2.5 font-mono text-[11px] leading-relaxed text-[#e8e2d4]">
+                <pre className="mt-1 max-h-64 overflow-auto rounded-lg bg-ink-950 p-2.5 font-mono text-[11px] leading-relaxed text-[#e8e2d4] dark:border dark:border-ink-800 dark:bg-[#0d0c0a]">
                   {String((error as { stack?: string }).stack ?? error.message)}
                 </pre>
               </details>
@@ -1400,10 +1443,10 @@ export function ChatView({
       </div>
 
       {/* composer */}
-      <footer className="border-t border-ink-200/70 bg-paper/90 backdrop-blur">
+      <footer className="border-t border-ink-200/70 bg-paper/90 backdrop-blur dark:border-ink-800/80">
         <div className="mx-auto max-w-3xl px-4 py-3">
           {fileError && (
-            <div className="mb-2 flex items-center justify-between rounded-xl border border-red-500/25 bg-red-50/90 px-3 py-1.5 text-xs text-red-900">
+            <div className="mb-2 flex items-center justify-between rounded-xl border border-red-500/25 bg-red-50/90 px-3 py-1.5 text-xs text-red-900 dark:border-red-500/30 dark:bg-red-950/40 dark:text-red-200">
               <span>{fileError}</span>
               <button
                 onClick={() => setFileError(null)}
@@ -1418,10 +1461,10 @@ export function ChatView({
             <div className="mb-2 flex gap-2">
               {images.map((img) => (
                 <span key={img.url.slice(0, 48)} className="relative">
-                  <img src={img.url} alt={img.name} className="h-16 w-16 rounded-xl border border-ink-200 object-cover" />
+                  <img src={img.url} alt={img.name} className="h-16 w-16 rounded-xl border border-ink-200 object-cover dark:border-ink-700" />
                   <button
                     onClick={() => setImages((p) => p.filter((x) => x.url !== img.url))}
-                    className="absolute -top-1.5 -right-1.5 grid h-5 w-5 cursor-pointer place-items-center rounded-full bg-ink-950 text-white"
+                    className="absolute -top-1.5 -right-1.5 grid h-5 w-5 cursor-pointer place-items-center rounded-full bg-ink-950 text-white dark:bg-ink-800"
                     aria-label="Remove image"
                   >
                     <X size={11} />
@@ -1430,7 +1473,7 @@ export function ChatView({
               ))}
             </div>
           )}
-          <div className="rounded-2xl border border-ink-300/70 bg-white shadow-[0_10px_36px_-16px_rgba(22,19,15,0.35)] transition focus-within:border-signal-600/60 focus-within:ring-4 focus-within:ring-signal-600/10">
+          <div className="rounded-2xl border border-ink-300/70 bg-white shadow-[0_10px_36px_-16px_rgba(22,19,15,0.35)] transition focus-within:border-signal-600/60 focus-within:ring-4 focus-within:ring-signal-600/10 dark:border-ink-800 dark:bg-ink-900 dark:shadow-[0_10px_36px_-16px_rgba(0,0,0,0.6)] dark:focus-within:border-signal-500/60 dark:focus-within:ring-signal-500/15">
             <textarea
               ref={areaRef}
               rows={1}
@@ -1454,7 +1497,7 @@ export function ChatView({
                         ? `Describe an image to generate with ${model}…`
                         : `Message ${model}…`
               }
-              className="max-h-40 w-full resize-none bg-transparent px-4 pt-3 pb-1 text-sm outline-none placeholder:text-ink-400 disabled:cursor-not-allowed"
+              className="max-h-40 w-full resize-none bg-transparent px-4 pt-3 pb-1 text-sm text-ink-900 outline-none placeholder:text-ink-400 disabled:cursor-not-allowed dark:text-[#ede7db] dark:placeholder:text-ink-500"
             />
             <div className="flex items-center gap-1 px-2.5 pb-2.5">
               <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { onFiles(e.target.files); e.target.value = ""; }} />
@@ -1465,7 +1508,7 @@ export function ChatView({
                   "grid h-8 w-8 place-items-center rounded-lg text-ink-500 transition",
                   modelCaps?.supportsVision === false || modelCaps?.supportsImageGen === true
                     ? "opacity-30 cursor-not-allowed"
-                    : "cursor-pointer hover:bg-ink-950/5 hover:text-ink-950 disabled:opacity-40"
+                    : "cursor-pointer hover:bg-ink-950/5 hover:text-ink-950 disabled:opacity-40 dark:text-ink-400 dark:hover:bg-white/5 dark:hover:text-white"
                 )}
                 title={
                   modelCaps?.supportsImageGen
@@ -1478,7 +1521,7 @@ export function ChatView({
               >
                 <ImagePlus size={17} />
               </button>
-              <span className="ml-1 hidden font-mono text-[11px] text-ink-400 sm:block">⏎ send · ⇧⏎ newline</span>
+              <span className="ml-1 hidden font-mono text-[11px] text-ink-400 dark:text-ink-500 sm:block">⏎ send · ⇧⏎ newline</span>
               <span className="ml-auto flex gap-1.5">
                 {busy && (
                   <button onClick={stop} className="flex cursor-pointer items-center gap-1.5 rounded-xl bg-red-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-red-700">

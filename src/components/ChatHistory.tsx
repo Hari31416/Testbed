@@ -1,14 +1,14 @@
-import { FlaskConical, MessageSquareText, PanelLeftClose, PenLine, ShieldCheck, Trash2 } from "lucide-react";
-import type { Chat, Provider } from "../lib/db";
-import { cn } from "../lib/utils";
-import { Plaque } from "./ui";
+import { FlaskConical, MessageSquareText, PanelLeftClose, PenLine, ShieldCheck, Trash2 } from 'lucide-react'
+import type { Chat, Provider } from '../lib/db'
+import { cn } from '../lib/utils'
+import { Plaque } from './ui'
 
 function age(ts: number): string {
-  const d = Date.now() - ts;
-  if (d < 60_000) return "now";
-  if (d < 3_600_000) return `${Math.floor(d / 60_000)}m`;
-  if (d < 86_400_000) return `${Math.floor(d / 3_600_000)}h`;
-  return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const d = Date.now() - ts
+  if (d < 60_000) return 'now'
+  if (d < 3_600_000) return `${Math.floor(d / 60_000)}m`
+  if (d < 86_400_000) return `${Math.floor(d / 3_600_000)}h`
+  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
 export function ChatHistory({
@@ -20,13 +20,13 @@ export function ChatHistory({
   onDelete,
   onCollapse,
 }: {
-  chats: Chat[];
-  activeId: string | null;
-  providersById: Map<string, Provider>;
-  onSelect: (id: string) => void;
-  onNew: () => void;
-  onDelete: (id: string) => void;
-  onCollapse: () => void;
+  chats: Chat[]
+  activeId: string | null
+  providersById: Map<string, Provider>
+  onSelect: (id: string) => void
+  onNew: () => void
+  onDelete: (id: string) => void
+  onCollapse: () => void
 }) {
   return (
     <div className="flex h-full flex-col gap-4 overflow-hidden p-4">

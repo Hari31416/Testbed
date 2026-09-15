@@ -239,7 +239,7 @@ export default function App() {
     <div className="flex h-full">
       <aside
         className={cn(
-          "shrink-0 overflow-hidden bg-ink-950 transition-[width] duration-200",
+          "shrink-0 overflow-hidden bg-ink-950 transition-[width] duration-200 dark:bg-[#100e0c] dark:border-r dark:border-white/10",
           collapsed ? "w-0" : "w-[300px] max-w-[85vw]",
         )}
       >
@@ -266,7 +266,7 @@ export default function App() {
               setCollapsed(false);
               localStorage.setItem("sidebar", "1");
             }}
-            className="absolute top-3 left-3 z-20 grid h-9 w-9 cursor-pointer place-items-center rounded-xl border border-ink-200 bg-white/90 shadow-sm transition hover:border-ink-400"
+            className="absolute top-3 left-3 z-20 grid h-9 w-9 cursor-pointer place-items-center rounded-xl border border-ink-200 bg-white/90 shadow-sm transition hover:border-ink-400 dark:border-ink-800 dark:bg-ink-900/90 dark:text-[#ede7db] dark:hover:border-ink-700"
             aria-label="Open history"
           >
             <PanelLeftOpen size={16} />

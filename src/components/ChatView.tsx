@@ -157,6 +157,25 @@ async function processImageFile(file: File): Promise<{ url: string; mediaType: s
   });
 }
 
+async function copyImageToClipboard(url: string): Promise<void> {
+  if (url.startsWith('data:image/')) {
+    const res = await fetch(url)
+    const blob = await res.blob()
+    await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })])
+    return
+  }
+  await navigator.clipboard.writeText(url)
+}
+
+function triggerImageDownload(url: string, filename?: string): void {
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename || `image-${Date.now()}.png`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+}
+
 function Lightbox({
   url,
   filename,
@@ -166,7 +185,39 @@ function Lightbox({
   filename?: string
   onClose: () => void
 }) {
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
   if (typeof document === 'undefined') return null
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      await copyImageToClipboard(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      try {
+        await navigator.clipboard.writeText(url)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      } catch {
+        // ignore clipboard error
+      }
+    }
+  }
+
+  const handleDownload = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    triggerImageDownload(url, filename)
+  }
 
   return createPortal(
     <div
@@ -186,15 +237,22 @@ function Lightbox({
           className="max-h-[90vh] max-w-[90vw] rounded-2xl object-contain shadow-2xl"
         />
         <div className="absolute top-3 right-3 flex items-center gap-2">
-          <a
-            href={url}
-            download={filename || 'generated-image.png'}
+          <button
+            onClick={handleCopy}
+            className="grid h-8 w-8 cursor-pointer place-items-center rounded-full bg-ink-950/70 text-white backdrop-blur transition hover:bg-ink-900"
+            title={copied ? 'Copied' : 'Copy image'}
+            aria-label="Copy image"
+          >
+            {copied ? <Check size={14} className="text-signal-400" /> : <Copy size={14} />}
+          </button>
+          <button
+            onClick={handleDownload}
             className="grid h-8 w-8 cursor-pointer place-items-center rounded-full bg-ink-950/70 text-white backdrop-blur transition hover:bg-ink-900"
             title="Download image"
             aria-label="Download image"
           >
             <Download size={15} />
-          </a>
+          </button>
           <button
             onClick={onClose}
             className="grid h-8 w-8 cursor-pointer place-items-center rounded-full bg-ink-950/70 text-white backdrop-blur transition hover:bg-ink-900"
@@ -209,6 +267,37 @@ function Lightbox({
   )
 }
 
+function ImageThumbnail({ url, filename }: { url: string; filename?: string }) {
+  const [lightboxOpen, setLightboxOpen] = useState(false)
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setLightboxOpen(true)}
+        className="group/thumb relative h-20 w-20 shrink-0 cursor-zoom-in overflow-hidden rounded-xl border border-white/20 bg-ink-900/60 shadow-xs transition hover:border-white/40 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-signal-500/50 sm:h-24 sm:w-24"
+        title={filename ? `${filename} (Click to view full size)` : 'Click to view full size'}
+        aria-label={filename ? `View ${filename}` : 'View full size image'}
+      >
+        <img
+          src={url}
+          alt={filename ?? 'Image attachment'}
+          className="h-full w-full object-cover transition duration-200 group-hover/thumb:scale-105"
+        />
+        <div className="absolute inset-0 flex items-center justify-center bg-ink-950/30 opacity-0 transition-opacity duration-150 group-hover/thumb:opacity-100">
+          <span className="grid h-7 w-7 place-items-center rounded-full bg-ink-950/70 text-white shadow-xs backdrop-blur-xs">
+            <Maximize2 size={13} />
+          </span>
+        </div>
+      </button>
+
+      {lightboxOpen && (
+        <Lightbox url={url} filename={filename} onClose={() => setLightboxOpen(false)} />
+      )}
+    </>
+  )
+}
+
 function ImageCard({ url, filename }: { url: string; filename?: string }) {
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -216,32 +305,23 @@ function ImageCard({ url, filename }: { url: string; filename?: string }) {
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation()
     try {
-      if (url.startsWith('data:image/')) {
-        const res = await fetch(url)
-        const blob = await res.blob()
-        await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })])
-        setCopied(true)
-        setTimeout(() => setCopied(false), 1500)
-        return
-      }
-      await navigator.clipboard.writeText(url)
+      await copyImageToClipboard(url)
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch {
-      await navigator.clipboard.writeText(url)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+      try {
+        await navigator.clipboard.writeText(url)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      } catch {
+        // ignore clipboard error
+      }
     }
   }
 
   const handleDownload = (e: React.MouseEvent) => {
     e.stopPropagation()
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename || `image-${Date.now()}.png`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
+    triggerImageDownload(url, filename)
   }
 
   return (
@@ -1220,15 +1300,25 @@ export function ChatView({
 
           {messages.map((m, mi) => {
             const umeta = metaFor(m);
-            if (m.role === "user") {
+            if (m.role === 'user') {
               const userTexts = m.parts.filter((p) => p.type === 'text')
+              const userFiles = m.parts.filter((p) => p.type === 'file') as unknown as Array<{ url?: string; filename?: string }>
               return (
                 <div key={m.id} className="flex animate-rise justify-end" style={{ animationDelay: `${Math.min(mi * 20, 120)}ms` }}>
                   <div className="max-w-[85%] rounded-2xl rounded-br-md bg-ink-950 px-4 py-2.5 text-sm leading-relaxed text-[#f5f1e8] shadow-md dark:border dark:border-ink-800 dark:bg-[#25201a] dark:text-[#f5f1e8]">
-                    {m.parts.filter((p) => p.type === "file").map((p, i) => {
-                      const f = p as unknown as { url?: string; filename?: string };
-                      return f.url ? <ImageCard key={i} url={f.url} filename={f.filename ?? "upload"} /> : null;
-                    })}
+                    {userFiles.length > 0 && (
+                      <div className={cn('flex flex-wrap gap-2', userTexts.length > 0 && 'mb-2.5')}>
+                        {userFiles.map((f, i) =>
+                          f.url ? (
+                            <ImageThumbnail
+                              key={i}
+                              url={f.url}
+                              filename={f.filename ?? 'upload'}
+                            />
+                          ) : null
+                        )}
+                      </div>
+                    )}
                     {userTexts.map((p, i) => (
                       <div key={i} className="whitespace-pre-wrap">{String((p as { text?: string }).text ?? '')}</div>
                     ))}
